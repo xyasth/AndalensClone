@@ -7,10 +7,9 @@ import Navbar from "@/components/navbar";
 export default function NewAlbum() {
   const router = useRouter();
 
-  // Local state for form (empty since it's a new album)
   const [form, setForm] = useState({
     eventName: "",
-    title: "",
+    title: "", 
     description: "",
   });
 
@@ -29,12 +28,19 @@ export default function NewAlbum() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+
+        {/*navbar*/}
         <Navbar />
+
       <main className="flex-1 px-6 py-8">
+
+        {/*Form*/}
         <form
           onSubmit={handleSubmit}
           className="max-w-3xl mx-auto space-y-6"
         >
+
+            {/*Event Name Input field*/}
           <div>
             <label className="block text-gray-700 font-medium mb-2">
               Event Name
@@ -49,6 +55,7 @@ export default function NewAlbum() {
             />
           </div>
 
+            {/*Title Input Field*/}
           <div>
             <label className="block text-gray-700 font-medium mb-2">
               Title
@@ -63,6 +70,7 @@ export default function NewAlbum() {
             />
           </div>
 
+            {/*Description Input field*/}
           <div>
             <label className="block text-gray-700 font-medium mb-2">
               Description
@@ -78,6 +86,8 @@ export default function NewAlbum() {
           </div>
 
           <div className="flex justify-end gap-4 mt-8">
+
+            {/*Cancel Button*/}
             <button
               type="button"
               onClick={() => router.push("/dashboard")}
@@ -85,6 +95,8 @@ export default function NewAlbum() {
             >
               Cancel
             </button>
+            
+            {/*Create album button*/}
             <button
               type="submit"
               className="px-6 py-3 rounded-lg bg-green-600 text-white hover:bg-green-700"
