@@ -8,7 +8,7 @@ import {
   Brain, 
   Upload,
   Database,
-  Settings 
+  FolderOpen 
 } from 'lucide-react';
 
 const Navigation = () => {
@@ -16,9 +16,9 @@ const Navigation = () => {
 
   const navItems = [
     { href: '/', label: 'Home', icon: Home },
-    { href: '/events', label: 'Events', icon: ImageIcon },
+    { href: '/dashboard', label: 'Dashboard', icon: FolderOpen },
     { href: '/upload', label: 'Upload', icon: Upload },
-    { href: '/clustering', label: 'Clustering', icon: Brain },
+    { href: '/clustering', label: 'AI Monitor', icon: Brain },
   ];
 
   return (

@@ -1,12 +1,13 @@
-import './globals.css';
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import './globals.css';
 import Navigation from '@/app/components/Navigation';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
-  title: 'AI Photo Clustering Gallery',
-  description: 'Intelligent photo organization using face recognition and clustering',
+export const metadata: Metadata = {
+  title: 'PhotoCluster AI - Smart Photo Organization',
+  description: 'Automatically organize and cluster photos using AI face recognition',
 };
 
 export default function RootLayout({
