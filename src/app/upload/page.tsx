@@ -1,12 +1,13 @@
 'use client';
 
+import imageCompression from "browser-image-compression";
 import { useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { 
-  Upload as UploadIcon, 
-  X, 
-  Image as ImageIcon, 
-  CheckCircle, 
+import {
+  Upload as UploadIcon,
+  X,
+  Image as ImageIcon,
+  CheckCircle,
   AlertCircle,
   Loader2,
   FolderPlus
@@ -25,7 +26,7 @@ export default function UploadPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedEventId = searchParams.get('eventId');
-  
+
   const [selectedEventId, setSelectedEventId] = useState(preselectedEventId || '');
   const [newEventName, setNewEventName] = useState('');
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
@@ -84,7 +85,7 @@ export default function UploadPage() {
 
   const createEvent = async () => {
     if (!newEventName.trim()) return;
-    
+
     try {
       setIsCreatingEvent(true);
       // In real implementation:
@@ -94,7 +95,7 @@ export default function UploadPage() {
       //   body: JSON.stringify({ name: newEventName })
       // });
       // const newEvent = await response.json();
-      
+
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
       const newEventId = `event-${Date.now()}`;
@@ -110,11 +111,11 @@ export default function UploadPage() {
   const simulateQualityCheck = async (file: UploadFile): Promise<{ isGood: boolean; score: number; reason?: string }> => {
     // Simulate quality check API call
     await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
-    
+
     // Random quality check result (in real app, this would be AI-powered)
     const score = Math.random();
     const isGood = score > 0.6;
-    
+
     return {
       isGood,
       score,
@@ -126,84 +127,69 @@ export default function UploadPage() {
     if (!selectedEventId || files.length === 0) return;
 
     setIsUploading(true);
-    
+
     for (const file of files) {
       try {
-        // Update status to uploading
-        setFiles(prev => prev.map(f => 
-          f.id === file.id ? { ...f, status: 'uploading' } : f
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, status: "uploading" } : f
         ));
 
-        // Step 1: Upload to Cloudflare R2
-        // In real implementation:
-        // const uploadResponse = await fetch('/api/upload', {
-        //   method: 'POST',
-        //   body: formData
-        // });
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Update status to processing (quality check)
-        setFiles(prev => prev.map(f => 
-          f.id === file.id ? { ...f, status: 'processing' } : f
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || "Upload failed");
+        }
+
+        // ✅ mark as processing (quality check, clustering)
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, status: "processing" } : f
         ));
 
-        // Step 2: Quality check
+        // fake quality check (replace with your API later)
         const qualityResult = await simulateQualityCheck(file);
-        
+
         if (!qualityResult.isGood) {
-          setFiles(prev => prev.map(f => 
-            f.id === file.id ? { 
-              ...f, 
-              status: 'error', 
-              error: qualityResult.reason,
-              qualityScore: qualityResult.score 
-            } : f
+          setFiles(prev => prev.map(f =>
+            f.id === file.id
+              ? { ...f, status: "error", error: qualityResult.reason, qualityScore: qualityResult.score }
+              : f
           ));
           continue;
         }
 
-        // Step 3: Face detection and clustering (would be done by AI service)
-        // In real implementation:
-        // await fetch('/api/clustering/process', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ photoId: uploadedPhotoId, eventId: selectedEventId })
-        // });
-
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Success
-        setFiles(prev => prev.map(f => 
-          f.id === file.id ? { 
-            ...f, 
-            status: 'completed',
-            qualityScore: qualityResult.score 
-          } : f
+        // ✅ Success
+        setFiles(prev => prev.map(f =>
+          f.id === file.id
+            ? { ...f, status: "completed", qualityScore: qualityResult.score }
+            : f
         ));
-
-      } catch (error) {
-        console.error(`Failed to process file ${file.name}:`, error);
-        setFiles(prev => prev.map(f => 
-          f.id === file.id ? { 
-            ...f, 
-            status: 'error', 
-            error: 'Upload failed' 
-          } : f
+      } catch (err) {
+        console.error(`Failed to process file ${file.name}:`, err);
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, status: "error", error: "Upload failed" } : f
         ));
       }
     }
 
     setIsUploading(false);
-    
-    // Navigate to event page after successful upload
-    const completedFiles = files.filter(f => f.status === 'completed');
+
+    const completedFiles = files.filter(f => f.status === "completed");
     if (completedFiles.length > 0) {
       setTimeout(() => {
         router.push(`/events/${selectedEventId}`);
       }, 2000);
     }
   };
+
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -248,7 +234,7 @@ export default function UploadPage() {
         {/* Event Selection */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Event</h2>
-          
+
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -308,16 +294,15 @@ export default function UploadPage() {
         {/* File Upload Area */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload Photos</h2>
-          
+
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              isDragging 
-                ? 'border-blue-500 bg-blue-50' 
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
+            className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragging
+              ? 'border-blue-500 bg-blue-50'
+              : 'border-gray-300 hover:border-gray-400'
+              }`}
           >
             <UploadIcon className="w-12 h-12 mx-auto text-gray-400 mb-4" />
             <p className="text-lg font-medium text-gray-900 mb-2">
@@ -365,8 +350,8 @@ export default function UploadPage() {
                 <div key={file.id} className="relative group">
                   <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
                     {file.preview ? (
-                      <img 
-                        src={file.preview} 
+                      <img
+                        src={file.preview}
                         alt={file.name}
                         className="w-full h-full object-cover"
                       />
@@ -375,7 +360,7 @@ export default function UploadPage() {
                         <ImageIcon className="w-8 h-8 text-gray-400" />
                       </div>
                     )}
-                    
+
                     {/* Status overlay */}
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
                       {!isUploading && (
@@ -388,7 +373,7 @@ export default function UploadPage() {
                       )}
                     </div>
                   </div>
-                  
+
                   {/* Status indicator */}
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex items-center">

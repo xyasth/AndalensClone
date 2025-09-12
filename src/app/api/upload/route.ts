@@ -1,37 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
-export async function POST(request: NextRequest) {
+const s3 = new S3Client({
+  region: process.env.B2_REGION!,
+  endpoint: process.env.B2_ENDPOINT!,
+  credentials: {
+    accessKeyId: process.env.B2_KEY_ID!,
+    secretAccessKey: process.env.B2_KEY_SECRET!,
+  },
+});
+
+export async function POST(req: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const eventId = formData.get('eventId') as string;
-    
-    if (!file || !eventId) {
-      return NextResponse.json({ error: 'Missing file or eventId' }, { status: 400 });
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
+
+    if (!file) {
+      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
-    
-    // In real implementation:
-    /*
-    const fileName = `${Date.now()}-${file.name}`;
-    const uploadPath = `uploads/${eventId}/${fileName}`;
-    
-    const uploadResult = await uploadToR2(file, uploadPath);
-    
-    if (!uploadResult.success) {
-      return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
-    }
-    */
-    
-    // Simulate R2 upload
-    const fileName = `${Date.now()}-${file.name}`;
-    const uploadPath = `/uploads/${eventId}/${fileName}`;
-    
+
+    const arrayBuffer = await file.arrayBuffer();
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: process.env.B2_BUCKET!,
+        Key: file.name, 
+        Body: Buffer.from(arrayBuffer),
+        ContentType: file.type,
+      })
+    );
+
     return NextResponse.json({
       success: true,
-      path: uploadPath,
-      fileName
+      key: file.name,
+      url: `https://${process.env.B2_BUCKET!}.${process.env.B2_REGION!}.backblazeb2.com/${file.name}`,
     });
-  } catch (error) {
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+  } catch (err) {
+    console.error("Upload error:", err);
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 }
