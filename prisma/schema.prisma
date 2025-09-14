@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NextAuth.js Models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  events        Event[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Your Application Models
+model Event {
+  id          String   @id @default(cuid())
+  name        String
+  title       String
+  description String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photoCount  Int      @default(0)
+  personCount Int      @default(0)
+  status      EventStatus @default(ACTIVE)
+  driveLink   String?  // Google Drive folder link
+  driveFolderId String? // Extracted Drive folder ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  photos      Photo[]
+  persons     Person[]
+
+  @@index([userId])
+}
+
+model Person {
+  id                String   @id @default(cuid())
+  name              String   // Generated name like "Person 1"
+  eventId           String
+  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  clusterId         String   @unique // ChromaDB cluster ID
+  photoCount        Int      @default(0)
+  thumbnailPath     String?
+  averageConfidence Float    @default(0.0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  faces             Face[]
+
+  @@index([eventId])
+}
+
+model Photo {
+  id           String      @id @default(cuid())
+  originalName String
+  path         String      // R2 storage path
+  eventId      String
+  event        Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  uploadedAt   DateTime    @default(now())
+  isGoodQuality Boolean    @default(false)
+  qualityScore Float       @default(0.0)
+  processedAt  DateTime?
+  status       PhotoStatus @default(PROCESSING)
+  driveFileId  String?     // Google Drive file ID
+  
+  faces        Face[]
+
+  @@index([eventId])
+}
+
+model Face {
+  id              String  @id @default(cuid())
+  fotoId          String  @unique // foto_id from your ML API
+  photoId         String
+  photo           Photo   @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  personId        String?
+  person          Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+  clusterId       String  // cluster_id from ChromaDB
+  embedding       Float[] // ChromaDB embedding vector
+  facialAreaX     Int
+  facialAreaY     Int
+  facialAreaW     Int
+  facialAreaH     Int
+  faceConfidence  Float
+  createdAt       DateTime @default(now())
+  
+  @@index([photoId])
+  @@index([personId])
+  @@index([clusterId])
+}
+
+model ProcessingActivity {
+  id            String            @id @default(cuid())
+  type          ProcessingType
+  status        ProcessingStatus
+  eventId       String
+  eventName     String
+  photoName     String
+  facesDetected Int?
+  clustersCreated Int?
+  timestamp     DateTime          @default(now())
+  error         String?
+  
+  @@index([eventId])
+}
+
+enum EventStatus {
+  ACTIVE
+  PROCESSING
+  COMPLETED
+}
+
+enum PhotoStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ProcessingType {
+  UPLOAD
+  QUALITY_CHECK
+  FACE_DETECTION
+  CLUSTERING
+}
+
+enum ProcessingStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
