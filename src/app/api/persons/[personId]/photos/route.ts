@@ -22,7 +22,6 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '50');
     const skip = (page - 1) * limit;
 
-    // Verify user owns this person through the event
     const person = await prisma.person.findFirst({
       where: {
         id: personId,
@@ -41,7 +40,6 @@ export async function GET(
       return NextResponse.json({ error: 'Person not found' }, { status: 404 });
     }
 
-    // Get photos that contain this person
     const faces = await prisma.face.findMany({
       where: {
         personId: personId

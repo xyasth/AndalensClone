@@ -1,4 +1,3 @@
-// app/api/events/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -35,7 +34,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Transform to match your interface
     const events = user.events.map(event => ({
       id: event.id,
       name: event.name,

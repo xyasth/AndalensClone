@@ -1,14 +1,11 @@
-// app/api/photos/cluster/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { PrismaClient } from '@prisma/client';
 
-/**
- * Prisma singleton (untuk dev/hot-reload environment)
- */
+
 declare global {
-  // eslint-disable-next-line no-var
+
   var prisma: PrismaClient | undefined;
 }
 const prisma = global.prisma ?? new PrismaClient();
@@ -31,7 +28,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request format' }, { status: 400 });
     }
 
-    // verify that the user owns the referenced events
     for (const album of body.albums) {
       const albumId = String(album.album_id);
       const event = await prisma.event.findFirst({
@@ -48,7 +44,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // call ML API (fallback to mock)
     let mlResponse: any;
     try {
       console.log('🤖 Calling ML API at:', `${ML_API_BASE_URL}/cluster`);
@@ -70,7 +65,6 @@ export async function POST(request: NextRequest) {
       mlResponse = generateMockResponse(body);
     }
 
-    // Save results to DB
     const saveResults = await saveProcessingResults(mlResponse);
     console.log('💾 Saved to database:', saveResults);
 
@@ -81,9 +75,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/* --------------------
-   Mock generator
-   -------------------- */
+
 function generateMockResponse(request: any) {
   const extracted: any[] = [];
   const centroid: any[] = [];
@@ -132,9 +124,7 @@ function generateMockResponse(request: any) {
   return { extracted, centroid };
 }
 
-/* --------------------
-   Save results (photo: findFirst -> update/create to avoid PhotoWhereUniqueInput error)
-   -------------------- */
+
 async function saveProcessingResults(mlResponse: any) {
   const { extracted, centroid } = mlResponse ?? {};
   if (!Array.isArray(extracted)) {
@@ -146,7 +136,6 @@ async function saveProcessingResults(mlResponse: any) {
       console.log('📌 Centroid sample:', centroid.slice(0, 5));
     }
 
-    // Group by album:foto
     const photoMap = new Map<string, any[]>();
     for (const face of extracted) {
       const albumId = String(face.album_id);
@@ -161,13 +150,13 @@ async function saveProcessingResults(mlResponse: any) {
       const albumId = String(albumIdRaw);
       const photoPath = `/drive/${albumId}/${fotoId}`;
 
-      // --- REPLACED UPSET BY findFirst + update/create ---
+
       const existingPhoto = await prisma.photo.findFirst({ where: { path: photoPath } });
 
       let photo;
       if (existingPhoto) {
         photo = await prisma.photo.update({
-          where: { id: existingPhoto.id }, // id adalah PhotoWhereUniqueInput
+          where: { id: existingPhoto.id }, 
           data: {
             status: 'COMPLETED',
             processedAt: new Date(),
@@ -189,12 +178,10 @@ async function saveProcessingResults(mlResponse: any) {
         });
       }
 
-      // process faces
       for (const face of faces) {
         const clusterIdStr = String(face.cluster_id ?? face.clusterId ?? '0');
         const fotoIdStr = String(face.face_id ?? face.foto_id ?? face.fotoId);
 
-        // sanitize embedding
         let embeddingSafe: number[] = [];
         if (Array.isArray(face.embedding)) {
           embeddingSafe = face.embedding.map((v: any) => {
@@ -210,7 +197,6 @@ async function saveProcessingResults(mlResponse: any) {
         const facialAreaH = Number(fa.h ?? 0);
         const faceConfidence = Number(face.face_confidence ?? face.faceConfidence ?? 0);
 
-        // person upsert (clusterId already @unique in schema)
         const person = await prisma.person.upsert({
           where: { clusterId: clusterIdStr },
           create: {
@@ -226,7 +212,6 @@ async function saveProcessingResults(mlResponse: any) {
           }
         });
 
-        // face upsert (fotoId is @unique)
         await prisma.face.upsert({
           where: { fotoId: fotoIdStr },
           create: {
@@ -251,7 +236,6 @@ async function saveProcessingResults(mlResponse: any) {
       }
     }
 
-    // update event stats
     const albumIds = Array.from(new Set(extracted.map((f: any) => String(f.album_id))));
     for (const albumId of albumIds) {
       const photoCount = await prisma.photo.count({ where: { eventId: albumId } });
