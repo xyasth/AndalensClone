@@ -54,7 +54,6 @@ export default function UploadPage() {
     failed: 0
   });
 
-  // Google Drive related states
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
   const [selectedDriveFiles, setSelectedDriveFiles] = useState<Set<string>>(new Set());
   const [isDriveLoading, setIsDriveLoading] = useState(false);
@@ -77,26 +76,30 @@ export default function UploadPage() {
     );
   }
 
-  if (!session) {
-    router.push('/auth/signin');
-    return null;
+  if (!session || !session.user?.email) {
+  router.push('/auth/signin');
+  return null;
   }
 
-  // Fetch albums on load
+  // FIXED: Fetch albums on load - REMOVED Authorization header
   useEffect(() => {
     const fetchAlbums = async () => {
       try {
-        const response = await fetch('/api/events', {
-          headers: {
-            'Authorization': `Bearer ${(session as any).accessToken}`
-          }
-        });
+        // REMOVED Authorization header - /api/events uses getServerSession
+        const response = await fetch('/api/events');
 
         if (response.ok) {
           const albumsData = await response.json();
           setAlbums(albumsData);
         } else {
           console.error('Failed to fetch albums:', response.status);
+          
+          // Add more specific error handling
+          if (response.status === 401) {
+            console.error('User not authenticated - redirecting to signin');
+            router.push('/auth/signin');
+            return;
+          }
         }
       } catch (error) {
         console.error('Failed to fetch albums:', error);
@@ -108,7 +111,7 @@ export default function UploadPage() {
     if (session) {
       fetchAlbums();
     }
-  }, [session]);
+  }, [session, router]);
 
   // Load drive files when album with drive link is selected
   useEffect(() => {
@@ -139,6 +142,7 @@ export default function UploadPage() {
     }
   }, [autoStart, selectedEventId, albums]);
 
+  // FIXED: Load Drive files - KEEP Authorization header (Google Drive API needs it)
   const loadDriveFiles = async (folderId: string) => {
     setIsDriveLoading(true);
     setDriveError('');
@@ -146,6 +150,7 @@ export default function UploadPage() {
     try {
       console.log('📁 Loading Drive files from folder:', folderId);
       
+      // KEEP Authorization header - /api/drive/files calls Google Drive API
       const response = await fetch(`/api/drive/files?folderId=${folderId}`, {
         headers: {
           'Authorization': `Bearer ${(session as any).accessToken}`
@@ -170,6 +175,7 @@ export default function UploadPage() {
     }
   };
 
+  // FIXED: Process Drive files - REMOVED Authorization header
   const processDriveFiles = async () => {
     if (selectedDriveFiles.size === 0) {
       alert('Please select at least one Drive file to process');
@@ -201,11 +207,12 @@ export default function UploadPage() {
 
       console.log('📝 Sending clustering request:', clusteringRequest);
 
+      // REMOVED Authorization header - /api/photos/cluster uses getServerSession
       const response = await fetch('/api/photos/cluster', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(session as any).accessToken}`
+          'Content-Type': 'application/json'
+          // REMOVED Authorization header
         },
         body: JSON.stringify(clusteringRequest)
       });
@@ -334,6 +341,7 @@ export default function UploadPage() {
     setFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
+  // FIXED: Create event - REMOVED Authorization header
   const createEvent = async () => {
     if (!newEventName.trim() || !newEventTitle.trim()) return;
     
@@ -350,16 +358,19 @@ export default function UploadPage() {
 
       console.log('📝 Creating event:', eventData);
 
+      // REMOVED Authorization header - /api/events uses getServerSession
       const response = await fetch('/api/events', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(session as any).accessToken}`
+          'Content-Type': 'application/json'
+          // REMOVED Authorization header
         },
         body: JSON.stringify(eventData)
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Create event error:', errorText);
         throw new Error(`Failed to create event: ${response.status}`);
       }
 
@@ -659,13 +670,13 @@ export default function UploadPage() {
             <Brain className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
             <div>
               <h3 className="text-sm font-medium text-blue-800">
-                🔥 KEY INTEGRATION POINTS - Where to Connect Your ML API
+                ✅ FIXED: Authorization Headers Updated
               </h3>
               <div className="text-sm text-blue-700 mt-1 space-y-1">
-                <p>• <strong>Drive Processing:</strong> When "Process Selected Files" is clicked, it calls `/api/photos/cluster`</p>
-                <p>• <strong>API Format:</strong> Sends `{`albums: [{album_id, folder_id: [drive_folder_id]}]`}` to your ML API</p>
-                <p>• <strong>Expected Response:</strong> `{`extracted: [...faces], centroid: [...clusters]`}` format</p>
-                <p>• <strong>Database:</strong> Results are automatically saved to Neon DB with proper face clustering</p>
+                <p>• <strong>✅ fetchAlbums:</strong> Authorization header REMOVED (uses getServerSession)</p>
+                <p>• <strong>✅ loadDriveFiles:</strong> Authorization header KEPT (calls Google Drive API)</p>
+                <p>• <strong>✅ createEvent:</strong> Authorization header REMOVED (uses getServerSession)</p>
+                <p>• <strong>✅ processDriveFiles:</strong> Authorization header REMOVED (uses getServerSession)</p>
               </div>
             </div>
           </div>

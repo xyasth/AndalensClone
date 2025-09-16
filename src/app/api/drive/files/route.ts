@@ -10,6 +10,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (session.error === "RefreshAccessTokenError") {
+      return NextResponse.json({ error: 'Access token expired. Please sign in again.' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const folderId = searchParams.get('folderId');
 
@@ -17,13 +21,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Folder ID is required' }, { status: 400 });
     }
 
-    const accessToken = (session as any).accessToken;
+    const accessToken = session.accessToken;
     
     if (!accessToken) {
       return NextResponse.json({ error: 'No access token available' }, { status: 401 });
     }
 
-    // Call Google Drive API to list files in the folder
+    console.log('Making request to Drive API with token:', accessToken.substring(0, 20) + '...');
+
     const response = await fetch(
       `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/gif' or mimeType='image/webp')&fields=files(id,name,mimeType,size,webViewLink,thumbnailLink)&orderBy=name`,
       {
@@ -38,8 +43,8 @@ export async function GET(request: NextRequest) {
       const error = await response.text();
       console.error('Drive API error:', error);
       
-      if (response.status === 401) {
-        return NextResponse.json({ error: 'Access token expired. Please sign in again.' }, { status: 401 });
+      if (response.status === 401 || response.status === 403) {
+        return NextResponse.json({ error: 'Access token expired or insufficient permissions. Please sign in again.' }, { status: 401 });
       }
       
       return NextResponse.json({ error: 'Failed to fetch files from Google Drive' }, { status: response.status });
@@ -47,7 +52,6 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
     
-    // Transform the data to match our interface
     const files = data.files.map((file: any) => ({
       id: file.id,
       name: file.name,
@@ -56,6 +60,8 @@ export async function GET(request: NextRequest) {
       webViewLink: file.webViewLink,
       thumbnailLink: file.thumbnailLink
     }));
+
+    console.log(`Successfully fetched ${files.length} files from Drive folder ${folderId}`);
 
     return NextResponse.json(files);
   } catch (error) {

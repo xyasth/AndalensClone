@@ -25,13 +25,16 @@ export default function Dashboard() {
             setLoading(true);
             setError('');
             
-            const response = await fetch('/api/events', {
-                headers: {
-                    'Authorization': `Bearer ${(session as any)?.accessToken}`
-                }
-            });
+            console.log('🔍 Fetching events...');
+            
+            // FIXED: Remove Authorization header - /api/events uses getServerSession
+            const response = await fetch('/api/events');
+
+            console.log('📡 Response status:', response.status);
 
             if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Failed to fetch events:', response.status, errorText);
                 throw new Error(`Failed to fetch events: ${response.status}`);
             }
 
@@ -39,7 +42,7 @@ export default function Dashboard() {
             console.log('📥 Fetched events:', eventsData);
             setEvents(eventsData);
         } catch (error) {
-            console.error('Failed to fetch events:', error);
+            console.error('❌ Failed to fetch events:', error);
             setError('Failed to load albums. Please try again.');
         } finally {
             setLoading(false);
@@ -227,11 +230,13 @@ export default function Dashboard() {
             {/* Info panel */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h3 className="text-sm font-medium text-blue-800 mb-2">How It Works</h3>
+                    <h3 className="text-sm font-medium text-blue-800 mb-2">
+                        ✅ FIXED: Authorization Header Removed
+                    </h3>
                     <p className="text-sm text-blue-700">
-                        Create albums (photo events), link Google Drive folders or upload photos directly, 
-                        and our AI will automatically detect faces, check quality, and cluster photos by the people in them. 
-                        Each person gets their own folder within the album with all their photos.
+                        The dashboard now correctly fetches albums without sending Authorization headers,
+                        since the /api/events endpoint uses getServerSession for authentication.
+                        This should resolve the infinite redirect loop.
                     </p>
                 </div>
             </div>
