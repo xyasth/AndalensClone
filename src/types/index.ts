@@ -3,32 +3,31 @@
 export interface Event {
   id: string;
   name: string;
-  title: string; // For compatibility with friend's album system
+  title: string;
   description?: string;
   createdAt: string;
   photoCount: number;
   personCount: number;
   status: 'active' | 'processing' | 'completed';
+  driveLink?: string;
+  driveFolderId?: string;
 }
-
-// Alias for compatibility - Album and Event are the same thing
-export type Album = Event;
 
 export interface Person {
   id: string;
-  name: string; // Generated name like "Person 1", "Person 2", etc.
+  name: string;
   eventId: string;
   cluster_id: string;
   photoCount: number;
-  thumbnailPath?: string;
   averageConfidence: number;
+  thumbnailPath?: string;
   createdAt: string;
 }
 
 export interface Photo {
   id: string;
   originalName: string;
-  path: string; // R2 storage path
+  path: string;
   eventId: string;
   uploadedAt: string;
   isGoodQuality: boolean;
@@ -36,64 +35,79 @@ export interface Photo {
   faces: Face[];
   processedAt?: string;
   status: 'processing' | 'completed' | 'failed';
+  driveFileId?: string;
 }
 
 export interface Face {
-  foto_id: string; // Unique ID for this face in this photo
+  foto_id: string;
   album: {
     id: string;
     name: string;
-    event: {
-      id: string;
-      name: string;
-    };
+    event: { id: string; name: string };
   };
-  embedding: number[]; // ChromaDB embedding vector
-  cluster_id: string; // Which person cluster this face belongs to
-  path: string; // Path to the source photo
+  embedding: number[];
+  cluster_id: string;
+  path: string;
   facial_area: {
     x: number;
     y: number;
     w: number;
     h: number;
+    left_eye?: [number, number];
+    right_eye?: [number, number];
   };
-  face_confidence: number; // 0-1 confidence that this is a face
+  face_confidence: number;
 }
 
-export interface ProcessingActivity {
+// API Types matching your friend's API
+export interface ClusteringAPIRequest {
+  albums: {
+    album_id: string;
+    folder_id: string[];
+  }[];
+}
+
+export interface ClusteringAPIResponse {
+  extracted: {
+    foto_id: string;
+    face_id: string;
+    album_id: string;
+    drive_id: string;
+    cluster_id: number;
+    facial_area: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      left_eye: [number, number];
+      right_eye: [number, number];
+    };
+    face_confidence: number;
+    embedding: number[];
+  }[];
+  centroid: {
+    cluster_id: string;
+    event_id: string | null;
+    album_id: string;
+    centroid_id: string;
+    foto_id: string;
+  }[];
+}
+
+export interface DriveFile {
   id: string;
-  type: 'upload' | 'quality_check' | 'face_detection' | 'clustering';
-  status: 'processing' | 'completed' | 'failed';
-  eventId: string;
-  eventName: string;
-  photoName: string;
-  facesDetected?: number;
-  clustersCreated?: number;
-  timestamp: Date;
-  error?: string;
+  name: string;
+  mimeType: string;
+  size: string;
+  webViewLink: string;
+  thumbnailLink?: string;
 }
 
-export interface ClusteringStats {
-  totalFaces: number;
-  totalClusters: number;
-  processedPhotos: number;
-  pendingPhotos: number;
-  averageConfidence: number;
-  lastProcessed: Date | null;
-  totalEvents: number;
-  qualityRejectionRate: number;
-}
-
-export interface QualityCheckResult {
-  isGood: boolean;
-  score: number;
-  reason?: string;
-}
-
-export interface ProcessingResult {
-  success: boolean;
-  facesDetected?: number;
-  clustersCreated?: number;
-  error?: string;
-  faces?: Face[];
+export interface Album {
+  id: string;
+  name: string;
+  title: string;
+  description?: string;
+  driveLink?: string;
+  driveFolderId?: string;
 }

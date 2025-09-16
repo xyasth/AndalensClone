@@ -2,17 +2,20 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User } from "lucide-react";
+import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User, Loader2, AlertCircle } from "lucide-react";
 import { Event, Person, Photo } from "@/types";
 
 export default function AlbumDetail() {
     const { id } = useParams();
     const router = useRouter();
+    const { data: session, status } = useSession();
     const [album, setAlbum] = useState<Event | null>(null);
     const [persons, setPersons] = useState<Person[]>([]);
     const [photos, setPhotos] = useState<Photo[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'people' | 'photos' | 'edit'>('people');
 
     const [editForm, setEditForm] = useState({
@@ -22,112 +25,91 @@ export default function AlbumDetail() {
     });
 
     useEffect(() => {
-        const fetchAlbumData = async () => {
-            try {
-                // In real implementation:
-                // const [albumRes, personsRes, photosRes] = await Promise.all([
-                //   fetch(`/api/events/${id}`),
-                //   fetch(`/api/events/${id}/persons`),
-                //   fetch(`/api/events/${id}/photos`)
-                // ]);
-                
-                // Dummy data that matches your friend's original structure
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                const albums = [
-                    {
-                        id: "1",
-                        name: "Wedding Ceremony",
-                        title: "Joren's Wedding",
-                        description: "A beautiful wedding ceremony held in Bali.",
-                        createdAt: new Date().toISOString(),
-                        photoCount: 45,
-                        personCount: 8,
-                        status: 'completed' as const
-                    },
-                    {
-                        id: "2",
-                        name: "Birthday Party",
-                        title: "Joren's 21st Birthday",
-                        description: "A night full of fun, laughter, and memories.",
-                        createdAt: new Date().toISOString(),
-                        photoCount: 32,
-                        personCount: 12,
-                        status: 'completed' as const
-                    },
-                    {
-                        id: "3",
-                        name: "Graduation",
-                        title: "Joren's High School Graduation",
-                        description: "Celebrating the milestone of finishing high school.",
-                        createdAt: new Date().toISOString(),
-                        photoCount: 23,
-                        personCount: 6,
-                        status: 'processing' as const
-                    },
-                ];
+        if (status === 'authenticated') {
+            fetchAlbumData();
+        } else if (status === 'unauthenticated') {
+            router.push('/auth/signin');
+        }
+    }, [id, status, router]);
 
-                const albumData = albums.find((a) => a.id === id);
-                
-                if (!albumData) {
-                    router.push('/dashboard');
+    const fetchAlbumData = async () => {
+        try {
+            setLoading(true);
+            setError('');
+            
+            // Fetch album details
+            const albumResponse = await fetch(`/api/events/${id}`, {
+                headers: {
+                    'Authorization': `Bearer ${(session as any)?.accessToken}`
+                }
+            });
+
+            if (!albumResponse.ok) {
+                if (albumResponse.status === 404) {
+                    setError('Album not found');
                     return;
                 }
-
-                // Mock persons data
-                const personsData: Person[] = [
-                    {
-                        id: 'person-1',
-                        name: 'Person 1',
-                        eventId: id as string,
-                        cluster_id: 'cluster-001',
-                        photoCount: 12,
-                        averageConfidence: 0.92,
-                        createdAt: new Date().toISOString()
-                    },
-                    {
-                        id: 'person-2',
-                        name: 'Person 2', 
-                        eventId: id as string,
-                        cluster_id: 'cluster-002',
-                        photoCount: 8,
-                        averageConfidence: 0.88,
-                        createdAt: new Date().toISOString()
-                    }
-                ];
-
-                // Mock photos data
-                const photosData: Photo[] = [
-                    {
-                        id: 'photo-1',
-                        originalName: `${albumData.name}_001.jpg`,
-                        path: `/uploads/${id}/${albumData.name}_001.jpg`,
-                        eventId: id as string,
-                        uploadedAt: new Date().toISOString(),
-                        isGoodQuality: true,
-                        qualityScore: 0.95,
-                        faces: [],
-                        status: 'completed'
-                    }
-                ];
-
-                setAlbum(albumData);
-                setPersons(personsData);
-                setPhotos(photosData);
-                setEditForm({
-                    name: albumData.name,
-                    title: albumData.title,
-                    description: albumData.description || "",
-                });
-            } catch (error) {
-                console.error('Failed to fetch album data:', error);
-            } finally {
-                setLoading(false);
+                throw new Error(`Failed to fetch album: ${albumResponse.status}`);
             }
-        };
 
-        fetchAlbumData();
-    }, [id, router]);
+            const albumData = await albumResponse.json();
+            setAlbum(albumData);
+            setEditForm({
+                name: albumData.name || '',
+                title: albumData.title || '',
+                description: albumData.description || '',
+            });
+
+            // Fetch persons/clusters for this album
+            await fetchPersonsAndPhotos(id as string);
+
+        } catch (error) {
+            console.error('Failed to fetch album data:', error);
+            setError('Failed to load album data');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchPersonsAndPhotos = async (albumId: string) => {
+        try {
+            // In a real implementation, you'd have separate endpoints:
+            // const [personsRes, photosRes] = await Promise.all([
+            //   fetch(`/api/events/${albumId}/persons`),
+            //   fetch(`/api/events/${albumId}/photos`)
+            // ]);
+
+            // For now, we'll simulate this by fetching from the database
+            // This would be handled by your existing Prisma setup
+            
+            // Fetch persons (clusters) for this album
+            const personsResponse = await fetch(`/api/events/${albumId}/persons`, {
+                headers: {
+                    'Authorization': `Bearer ${(session as any)?.accessToken}`
+                }
+            });
+
+            if (personsResponse.ok) {
+                const personsData = await personsResponse.json();
+                setPersons(personsData);
+            }
+
+            // Fetch photos for this album
+            const photosResponse = await fetch(`/api/events/${albumId}/photos`, {
+                headers: {
+                    'Authorization': `Bearer ${(session as any)?.accessToken}`
+                }
+            });
+
+            if (photosResponse.ok) {
+                const photosData = await photosResponse.json();
+                setPhotos(photosData);
+            }
+
+        } catch (error) {
+            console.error('Failed to fetch persons/photos:', error);
+        }
+    };
 
     const handleEditChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -138,16 +120,19 @@ export default function AlbumDetail() {
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            // In real implementation:
-            // await fetch(`/api/events/${id}`, {
-            //   method: 'PUT',
-            //   headers: { 'Content-Type': 'application/json' },
-            //   body: JSON.stringify(editForm)
-            // });
-            
-            console.log("Updated album:", editForm);
-            alert("Album updated successfully!");
-            
+            const response = await fetch(`/api/events/${id}`, {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(session as any)?.accessToken}`
+                },
+                body: JSON.stringify(editForm)
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to update album');
+            }
+
             // Update local state
             if (album) {
                 setAlbum({
@@ -168,7 +153,24 @@ export default function AlbumDetail() {
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+                <div className="text-center">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    <p>Loading album...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
+                    <Link href="/dashboard" className="text-blue-600 hover:text-blue-700">
+                        ← Back to dashboard
+                    </Link>
+                </div>
             </div>
         );
     }
@@ -282,14 +284,28 @@ export default function AlbumDetail() {
                                 <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
                                     <User className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                                     <h3 className="text-lg font-medium text-gray-900 mb-2">No people detected yet</h3>
-                                    <p className="text-gray-600 mb-6">Upload photos to automatically detect and cluster people</p>
-                                    <Link
-                                        href={`/upload?eventId=${album.id}`}
-                                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                    >
-                                        <Plus className="w-4 h-4 mr-2" />
-                                        Upload Photos
-                                    </Link>
+                                    <p className="text-gray-600 mb-6">
+                                        Process photos from Google Drive or upload photos to automatically detect and cluster people
+                                    </p>
+                                    <div className="flex gap-3 justify-center">
+                                        <Link
+                                            href={`/upload?eventId=${album.id}`}
+                                            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                        >
+                                            <Plus className="w-4 h-4 mr-2" />
+                                            Process Photos
+                                        </Link>
+                                        {album.driveLink && (
+                                            <a
+                                                href={album.driveLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                            >
+                                                View Drive Folder
+                                            </a>
+                                        )}
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -300,9 +316,17 @@ export default function AlbumDetail() {
                                             className="group bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
                                         >
                                             <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden">
-                                                <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                                                    <User className="w-8 h-8 text-white" />
-                                                </div>
+                                                {person.thumbnailPath ? (
+                                                    <img
+                                                        src={person.thumbnailPath}
+                                                        alt={person.name}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                                                        <User className="w-8 h-8 text-white" />
+                                                    </div>
+                                                )}
                                             </div>
                                             <h3 className="font-medium text-gray-900 text-sm mb-1 group-hover:text-blue-600">
                                                 {person.name}
@@ -329,14 +353,16 @@ export default function AlbumDetail() {
                             {photos.length === 0 ? (
                                 <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
                                     <ImageIcon className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">No photos uploaded yet</h3>
-                                    <p className="text-gray-600 mb-6">Start by uploading photos to this album</p>
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">No photos processed yet</h3>
+                                    <p className="text-gray-600 mb-6">
+                                        Start by processing photos from Google Drive or uploading new ones
+                                    </p>
                                     <Link
                                         href={`/upload?eventId=${album.id}`}
                                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                                     >
                                         <Plus className="w-4 h-4 mr-2" />
-                                        Upload Photos
+                                        Process Photos
                                     </Link>
                                 </div>
                             ) : (
@@ -353,6 +379,9 @@ export default function AlbumDetail() {
                                                 <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <p className="text-xs font-medium truncate">{photo.originalName}</p>
                                                     <p className="text-xs opacity-75">{photo.faces.length} faces</p>
+                                                    <p className="text-xs opacity-75">
+                                                        {new Date(photo.uploadedAt).toLocaleDateString()}
+                                                    </p>
                                                 </div>
                                             </div>
                                             
@@ -360,6 +389,18 @@ export default function AlbumDetail() {
                                                 <div className={`w-3 h-3 rounded-full ${
                                                     photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
                                                 }`} title={`Quality Score: ${(photo.qualityScore * 100).toFixed(0)}%`}></div>
+                                            </div>
+
+                                            <div className="absolute top-2 left-2">
+                                                <div className={`text-xs px-2 py-1 rounded ${
+                                                    photo.status === 'completed' 
+                                                        ? 'bg-green-100 text-green-800' 
+                                                        : photo.status === 'processing'
+                                                        ? 'bg-yellow-100 text-yellow-800'
+                                                        : 'bg-red-100 text-red-800'
+                                                }`}>
+                                                    {photo.status}
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -369,14 +410,13 @@ export default function AlbumDetail() {
                     </div>
                 )}
 
-                {/* Edit Tab - Your friend's original edit functionality */}
+                {/* Edit Tab */}
                 {activeTab === 'edit' && (
                     <div className="space-y-6">
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <h2 className="text-2xl font-semibold text-gray-900 mb-6">Edit Album</h2>
                             
                             <form onSubmit={handleEditSubmit} className="space-y-6">
-                                {/* Event name input field */}
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">
                                         Event Name
@@ -390,7 +430,6 @@ export default function AlbumDetail() {
                                     />
                                 </div>
 
-                                {/* Title input field */}
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">
                                         Title
@@ -404,7 +443,6 @@ export default function AlbumDetail() {
                                     />
                                 </div>
 
-                                {/* Description input field */}
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">
                                         Description
@@ -419,7 +457,6 @@ export default function AlbumDetail() {
                                 </div>
 
                                 <div className="flex justify-end gap-4 mt-8">
-                                    {/* Cancel button */}
                                     <button
                                         type="button"
                                         onClick={() => setActiveTab('people')}
@@ -428,7 +465,6 @@ export default function AlbumDetail() {
                                         Cancel
                                     </button>
 
-                                    {/* Save changes button */}
                                     <button
                                         type="submit"
                                         className="px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"

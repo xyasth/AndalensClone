@@ -2,69 +2,88 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Event } from "@/types";
-import { Plus, Image as ImageIcon, Users, Calendar } from "lucide-react";
+import { Plus, Image as ImageIcon, Users, Calendar, Loader2, AlertCircle } from "lucide-react";
 
 export default function Dashboard() {
+    const { data: session, status } = useSession();
     const [events, setEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string>('');
 
     useEffect(() => {
-        // Fetch events/albums
-        const fetchEvents = async () => {
-            try {
-                // In real implementation: const response = await fetch('/api/events');
-                // For now, use dummy data that matches your friend's structure
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                const eventsData: Event[] = [
-                    {
-                        id: "1",
-                        name: "Wedding Ceremony",
-                        title: "Joren's Wedding",
-                        description: "A beautiful wedding ceremony held in Bali.",
-                        createdAt: new Date().toISOString(),
-                        photoCount: 45,
-                        personCount: 8,
-                        status: 'completed'
-                    },
-                    {
-                        id: "2", 
-                        name: "Birthday Party",
-                        title: "Joren's 21st Birthday",
-                        description: "A night full of fun, laughter, and memories.",
-                        createdAt: new Date().toISOString(),
-                        photoCount: 32,
-                        personCount: 12,
-                        status: 'completed'
-                    },
-                    {
-                        id: "3",
-                        name: "Graduation",
-                        title: "Joren's High School Graduation", 
-                        description: "Celebrating the milestone of finishing high school.",
-                        createdAt: new Date().toISOString(),
-                        photoCount: 23,
-                        personCount: 6,
-                        status: 'processing'
-                    },
-                ];
-                
-                setEvents(eventsData);
-            } catch (error) {
-                console.error('Failed to fetch events:', error);
-            } finally {
-                setLoading(false);
+        if (status === 'authenticated') {
+            fetchEvents();
+        } else if (status === 'unauthenticated') {
+            setLoading(false);
+        }
+    }, [status]);
+
+    const fetchEvents = async () => {
+        try {
+            setLoading(true);
+            setError('');
+            
+            const response = await fetch('/api/events', {
+                headers: {
+                    'Authorization': `Bearer ${(session as any)?.accessToken}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch events: ${response.status}`);
             }
-        };
 
-        fetchEvents();
-    }, []);
+            const eventsData = await response.json();
+            console.log('📥 Fetched events:', eventsData);
+            setEvents(eventsData);
+        } catch (error) {
+            console.error('Failed to fetch events:', error);
+            setError('Failed to load albums. Please try again.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    if (loading) {
+    if (status === 'loading' || loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+                <div className="text-center">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    <p>Loading your albums...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (status === 'unauthenticated') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Please sign in</h2>
+                    <Link href="/auth/signin" className="text-blue-600 hover:text-blue-700">
+                        Sign in to access your albums
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center max-w-md">
+                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Error Loading Albums</h2>
+                    <p className="text-gray-600 mb-4">{error}</p>
+                    <button
+                        onClick={fetchEvents}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                        Try Again
+                    </button>
+                </div>
             </div>
         );
     }
@@ -77,7 +96,12 @@ export default function Dashboard() {
                     <div className="flex justify-between items-center">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">Your Photo Albums</h1>
-                            <p className="text-gray-600 mt-1">Manage your photo collections with AI clustering</p>
+                            <p className="text-gray-600 mt-1">
+                                Manage your photo collections with AI clustering
+                                {session?.user?.email && (
+                                    <span className="ml-2 text-sm">({session.user.email})</span>
+                                )}
+                            </p>
                         </div>
                         <Link
                             href="/dashboard/add"
@@ -92,7 +116,7 @@ export default function Dashboard() {
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Add album button - keeping your friend's original design */}
+                    {/* Add album button */}
                     <Link href="/dashboard/add">
                         <div className="border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center p-6 hover:bg-gray-50 hover:border-gray-400 cursor-pointer transition-colors min-h-[200px]">
                             <Plus className="w-12 h-12 text-gray-400 mb-3" />
@@ -101,7 +125,7 @@ export default function Dashboard() {
                         </div>
                     </Link>
 
-                    {/* Album cards - enhanced version of your friend's design */}
+                    {/* Album cards */}
                     {events.map((album) => (
                         <div key={album.id} className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden">
                             {/* Album thumbnail area */}
@@ -110,6 +134,11 @@ export default function Dashboard() {
                                 {album.status === 'processing' && (
                                     <div className="absolute top-2 right-2">
                                         <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                                    </div>
+                                )}
+                                {album.driveLink && (
+                                    <div className="absolute top-2 left-2">
+                                        <div className="bg-green-500 text-white text-xs px-2 py-1 rounded">Drive</div>
                                     </div>
                                 )}
                             </div>
@@ -200,9 +229,9 @@ export default function Dashboard() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h3 className="text-sm font-medium text-blue-800 mb-2">How It Works</h3>
                     <p className="text-sm text-blue-700">
-                        Create albums (photo events), upload photos, and our AI will automatically detect faces, 
-                        check quality, and cluster photos by the people in them. Each person gets their own folder 
-                        within the album with all their photos.
+                        Create albums (photo events), link Google Drive folders or upload photos directly, 
+                        and our AI will automatically detect faces, check quality, and cluster photos by the people in them. 
+                        Each person gets their own folder within the album with all their photos.
                     </p>
                 </div>
             </div>

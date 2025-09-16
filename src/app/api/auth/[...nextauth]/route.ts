@@ -26,7 +26,7 @@ export const authOptions: AuthOptions = {
   ],
   callbacks: {
     async signIn() {
-      return true; // Allow sign in
+      return true; 
     },
     async jwt({ token, account }) {
       if (account && account.provider === 'google') {
