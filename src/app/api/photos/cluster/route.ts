@@ -11,7 +11,7 @@ declare global {
 const prisma = global.prisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'http://127.0.0.1:8000/extract';
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://80046ae3e5a7.ngrok-free.app/extract';
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
 
     let mlResponse: any;
     try {
-      console.log('🤖 Calling ML API at:', `${ML_API_BASE_URL}/cluster`);
-      const resp = await fetch(`${ML_API_BASE_URL}/cluster`, {
+      console.log('🤖 Calling ML API at:', `${ML_API_BASE_URL}`);
+      const resp = await fetch(`${ML_API_BASE_URL}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
