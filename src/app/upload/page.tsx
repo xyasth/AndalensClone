@@ -207,7 +207,6 @@ export default function UploadPage() {
 
       console.log('📝 Sending clustering request:', clusteringRequest);
 
-      // REMOVED Authorization header - /api/photos/cluster uses getServerSession
       const response = await fetch('/api/photos/cluster', {
         method: 'POST',
         headers: { 
@@ -273,19 +272,16 @@ export default function UploadPage() {
   }, [files.length, selectedEventId]);
 
   const simulateFileProcessing = async (file: UploadFile) => {
-    // Simulate upload
     setFiles(prev => prev.map(f => 
       f.id === file.id ? { ...f, status: 'uploading' } : f
     ));
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Simulate quality check
     setFiles(prev => prev.map(f => 
       f.id === file.id ? { ...f, status: 'quality-check' } : f
     ));
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Simulate clustering
     setFiles(prev => prev.map(f => 
       f.id === file.id ? { ...f, status: 'clustering' } : f
     ));
@@ -358,12 +354,10 @@ export default function UploadPage() {
 
       console.log('📝 Creating event:', eventData);
 
-      // REMOVED Authorization header - /api/events uses getServerSession
       const response = await fetch('/api/events', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json'
-          // REMOVED Authorization header
         },
         body: JSON.stringify(eventData)
       });

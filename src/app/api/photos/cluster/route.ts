@@ -11,7 +11,7 @@ declare global {
 const prisma = global.prisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'http://your-friend-ml-api.com';
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'http://127.0.0.1:8000/extract';
 
 export async function POST(request: NextRequest) {
   try {
