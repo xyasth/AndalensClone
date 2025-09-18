@@ -3,15 +3,13 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { PrismaClient } from '@prisma/client';
 
-
 declare global {
-
   var prisma: PrismaClient | undefined;
 }
 const prisma = global.prisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://80046ae3e5a7.ngrok-free.app/extract';
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://48f9c5d6134c.ngrok-free.app/extract';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request format' }, { status: 400 });
     }
 
+    // Verify user owns all albums
     for (const album of body.albums) {
       const albumId = String(album.album_id);
       const event = await prisma.event.findFirst({
@@ -46,22 +45,42 @@ export async function POST(request: NextRequest) {
 
     let mlResponse: any;
     try {
-      console.log('🤖 Calling ML API at:', `${ML_API_BASE_URL}`);
+      console.log('🤖 Calling REAL ML API at:', `${ML_API_BASE_URL}`);
+      console.log('📝 Request body:', JSON.stringify(body, null, 2));
+      
       const resp = await fetch(`${ML_API_BASE_URL}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'  // Skip ngrok browser warning
+        },
+        body: JSON.stringify(body),
+        // Increase timeout for ML processing
+        signal: AbortSignal.timeout(300000) // 5 minutes timeout
       });
 
       if (!resp.ok) {
         const text = await resp.text();
+        console.error('❌ ML API error response:', text);
         throw new Error(`ML API error ${resp.status}: ${text}`);
       }
 
       mlResponse = await resp.json();
-      console.log('✅ ML API response received. Keys:', Object.keys(mlResponse || {}));
+      console.log('✅ REAL ML API response received successfully!');
+      console.log('📊 Extracted faces:', mlResponse.extracted?.length || 0);
+      console.log('📊 Clusters found:', mlResponse.centroid?.length || 0);
+      
+      // Log first few items to verify structure
+      if (mlResponse.extracted?.length > 0) {
+        console.log('📋 Sample extracted face:', JSON.stringify(mlResponse.extracted[0], null, 2));
+      }
+      if (mlResponse.centroid?.length > 0) {
+        console.log('📋 Sample centroid:', JSON.stringify(mlResponse.centroid[0], null, 2));
+      }
+      
     } catch (err) {
-      console.warn('❌ ML API call failed, using mock response. Error:', err);
+      console.warn('❌ REAL ML API call failed, using mock response as fallback. Error:', err);
+      console.warn('⚠️ This should only happen during development or when ML API is down');
       mlResponse = generateMockResponse(body);
     }
 
@@ -75,55 +94,73 @@ export async function POST(request: NextRequest) {
   }
 }
 
-
 function generateMockResponse(request: any) {
+  console.log('🔧 Generating mock response as fallback (ML API unavailable)');
+  
   const extracted: any[] = [];
   const centroid: any[] = [];
   const clusterMap = new Map<number, boolean>();
 
   for (const album of request.albums) {
+    console.log('📁 Mock processing album:', album.album_id, 'with folders:', album.folder_id);
+    
     for (const folderId of album.folder_id) {
-      const numFaces = Math.floor(Math.random() * 3) + 1;
-      for (let i = 0; i < numFaces; i++) {
-        const clusterId = Math.floor(Math.random() * 5);
-        const fotoId = `${folderId}_${i}.jpg`;
-        const faceId = `${fotoId}_f-${i}`;
+      // Simulate realistic number of photos (8-15 photos per folder)
+      const numPhotos = Math.floor(Math.random() * 8) + 8; 
+      
+      for (let photoIndex = 0; photoIndex < numPhotos; photoIndex++) {
+        const fotoId = `photo_${photoIndex}.jpg`;
+        
+        // Each photo can have 1-4 faces
+        const numFacesInPhoto = Math.floor(Math.random() * 4) + 1;
+        
+        for (let faceIndex = 0; faceIndex < numFacesInPhoto; faceIndex++) {
+          // Simulate realistic cluster distribution (0-16 clusters total)
+          const clusterId = Math.floor(Math.random() * 17);
+          const faceId = `${fotoId}_f-${faceIndex}`;
 
-        extracted.push({
-          foto_id: fotoId,
-          face_id: faceId,
-          album_id: album.album_id,
-          drive_id: folderId,
-          cluster_id: clusterId,
-          facial_area: {
-            x: Math.floor(Math.random() * 400),
-            y: Math.floor(Math.random() * 400),
-            w: Math.floor(Math.random() * 100) + 50,
-            h: Math.floor(Math.random() * 120) + 60,
-            left_eye: [Math.random() * 500, Math.random() * 500],
-            right_eye: [Math.random() * 500, Math.random() * 500]
-          },
-          face_confidence: Math.random() * 0.4 + 0.6,
-          embedding: Array.from({ length: 512 }, () => Math.random() * 2 - 1)
-        });
-
-        if (!clusterMap.has(clusterId)) {
-          centroid.push({
-            cluster_id: clusterId.toString(),
-            event_id: null,
+          extracted.push({
+            foto_id: fotoId,
+            face_id: faceId,
             album_id: album.album_id,
-            centroid_id: faceId,
-            foto_id: fotoId
+            drive_id: folderId,
+            cluster_id: clusterId,
+            facial_area: {
+              x: Math.floor(Math.random() * 600) + 100,      // 100-700px
+              y: Math.floor(Math.random() * 400) + 100,      // 100-500px  
+              w: Math.floor(Math.random() * 120) + 80,       // 80-200px
+              h: Math.floor(Math.random() * 140) + 100,      // 100-240px
+              left_eye: [Math.random() * 1000, Math.random() * 800],
+              right_eye: [Math.random() * 1000, Math.random() * 800],
+              nose: [Math.random() * 1000, Math.random() * 800],
+              mouth_left: [Math.random() * 1000, Math.random() * 800],
+              mouth_right: [Math.random() * 1000, Math.random() * 800]
+            },
+            face_confidence: Math.random() * 0.25 + 0.75,   // 0.75-1.0 confidence
+            embedding: Array.from({ length: 512 }, () => Math.random() * 2 - 1)
           });
-          clusterMap.set(clusterId, true);
+
+          // Add to centroid if first occurrence of this cluster
+          if (!clusterMap.has(clusterId)) {
+            centroid.push({
+              cluster_id: clusterId.toString(),
+              event_id: null,
+              album_id: album.album_id,
+              centroid_id: faceId,
+              foto_id: fotoId
+            });
+            clusterMap.set(clusterId, true);
+          }
         }
       }
     }
   }
 
+  console.log(`✅ Mock response generated: ${extracted.length} faces in ${centroid.length} clusters`);
+  console.log('📊 Cluster distribution:', Array.from(clusterMap.keys()).sort((a,b) => a-b));
+  
   return { extracted, centroid };
 }
-
 
 async function saveProcessingResults(mlResponse: any) {
   const { extracted, centroid } = mlResponse ?? {};
@@ -132,35 +169,51 @@ async function saveProcessingResults(mlResponse: any) {
   }
 
   try {
-    if (Array.isArray(centroid) && centroid.length) {
-      console.log('📌 Centroid sample:', centroid.slice(0, 5));
-    }
+    console.log(`🔄 Processing ${extracted.length} faces and ${centroid?.length || 0} centroids from ML API`);
 
+    // Group faces by photo (foto_id) 
     const photoMap = new Map<string, any[]>();
     for (const face of extracted) {
       const albumId = String(face.album_id);
       const fotoId = String(face.foto_id ?? face.fotoId ?? 'unknown.jpg');
       const key = `${albumId}:${fotoId}`;
+      
       if (!photoMap.has(key)) photoMap.set(key, []);
       photoMap.get(key)!.push(face);
     }
 
+    console.log(`📊 Processing ${photoMap.size} unique photos across albums`);
+
+    // Create centroid lookup for efficient thumbnail assignment
+    const centroidMap = new Map<string, any>();
+    if (Array.isArray(centroid)) {
+      for (const c of centroid) {
+        const key = `${c.album_id}:${c.cluster_id}`;
+        centroidMap.set(key, c);
+        console.log(`📍 Centroid for cluster ${c.cluster_id}: ${c.foto_id}`);
+      }
+    }
+
+    // Process each photo
     for (const [key, faces] of photoMap) {
-      const [albumIdRaw, fotoId] = key.split(':');
-      const albumId = String(albumIdRaw);
+      const [albumId, fotoId] = key.split(':');
       const photoPath = `/drive/${albumId}/${fotoId}`;
 
+      console.log(`📷 Processing photo: ${fotoId} with ${faces.length} faces`);
 
-      const existingPhoto = await prisma.photo.findFirst({ where: { path: photoPath } });
-
-      let photo;
-      if (existingPhoto) {
+      // Create or update photo record
+      let photo = await prisma.photo.findFirst({ where: { path: photoPath } });
+      
+      if (photo) {
         photo = await prisma.photo.update({
-          where: { id: existingPhoto.id }, 
+          where: { id: photo.id },
           data: {
             status: 'COMPLETED',
             processedAt: new Date(),
-            driveFileId: faces[0]?.drive_id ?? null
+            driveFileId: faces[0]?.drive_id ?? null,
+            // Update quality based on face detection results
+            isGoodQuality: faces.length > 0 && faces.some(f => f.face_confidence > 0.8),
+            qualityScore: faces.length > 0 ? Math.max(...faces.map(f => Number(f.face_confidence) || 0)) : 0.5
           }
         });
       } else {
@@ -169,8 +222,8 @@ async function saveProcessingResults(mlResponse: any) {
             originalName: fotoId,
             path: photoPath,
             eventId: albumId,
-            isGoodQuality: true,
-            qualityScore: 0.9,
+            isGoodQuality: faces.length > 0 && faces.some(f => f.face_confidence > 0.8),
+            qualityScore: faces.length > 0 ? Math.max(...faces.map(f => Number(f.face_confidence) || 0)) : 0.5,
             status: 'COMPLETED',
             processedAt: new Date(),
             driveFileId: faces[0]?.drive_id ?? null
@@ -178,40 +231,83 @@ async function saveProcessingResults(mlResponse: any) {
         });
       }
 
+      // Process each face in this photo
       for (const face of faces) {
-        const clusterIdStr = String(face.cluster_id ?? face.clusterId ?? '0');
-        const fotoIdStr = String(face.face_id ?? face.foto_id ?? face.fotoId);
+        const clusterIdStr = String(face.cluster_id ?? 0);
+        const fotoIdStr = String(face.face_id ?? face.foto_id ?? face.fotoId ?? `${fotoId}_face`);
 
+        // Safely process embedding
         let embeddingSafe: number[] = [];
         if (Array.isArray(face.embedding)) {
           embeddingSafe = face.embedding.map((v: any) => {
             const n = Number(v);
             return Number.isFinite(n) ? n : 0;
-          });
+          }).slice(0, 512); // Ensure max 512 dimensions
         }
 
-        const fa = face.facial_area ?? face.facialArea ?? {};
-        const facialAreaX = Number(fa.x ?? 0);
-        const facialAreaY = Number(fa.y ?? 0);
-        const facialAreaW = Number(fa.w ?? 0);
-        const facialAreaH = Number(fa.h ?? 0);
-        const faceConfidence = Number(face.face_confidence ?? face.faceConfidence ?? 0);
+        // Extract facial area data with proper defaults
+        const fa = face.facial_area ?? {};
+        const facialAreaX = Math.max(0, Number(fa.x ?? 0));
+        const facialAreaY = Math.max(0, Number(fa.y ?? 0));  
+        const facialAreaW = Math.max(50, Number(fa.w ?? 100)); // Min 50px width
+        const facialAreaH = Math.max(50, Number(fa.h ?? 100)); // Min 50px height
+        const faceConfidence = Math.min(1.0, Math.max(0.0, Number(face.face_confidence ?? 0)));
 
-        const person = await prisma.person.upsert({
-          where: { clusterId: clusterIdStr },
-          create: {
-            name: `Person ${clusterIdStr}`,
-            eventId: albumId,
-            clusterId: clusterIdStr,
-            photoCount: 1,
-            averageConfidence: faceConfidence
-          },
-          update: {
-            photoCount: { increment: 1 },
-            averageConfidence: faceConfidence
-          }
+        console.log(`👤 Processing face in cluster ${clusterIdStr} with confidence ${faceConfidence.toFixed(2)}`);
+
+        // Check if this face should be the thumbnail for this cluster
+        const centroidKey = `${albumId}:${clusterIdStr}`;
+        const clusterCentroid = centroidMap.get(centroidKey);
+        const shouldBeThumbnail = clusterCentroid && clusterCentroid.foto_id === fotoId;
+
+        // Create or update person (cluster)
+        let person = await prisma.person.findFirst({
+          where: { clusterId: clusterIdStr, eventId: albumId }
         });
 
+        if (person) {
+          // Update existing person
+          const faceCount = await prisma.face.count({
+            where: { personId: person.id }
+          });
+          
+          const avgConfidenceResult = await prisma.face.aggregate({
+            where: { personId: person.id },
+            _avg: { faceConfidence: true }
+          });
+
+          const updatedConfidence = avgConfidenceResult._avg.faceConfidence || faceConfidence;
+          
+          person = await prisma.person.update({
+            where: { id: person.id },
+            data: {
+              photoCount: faceCount + 1,
+              averageConfidence: updatedConfidence,
+              // Update thumbnail if this is the centroid face or if no thumbnail exists
+              thumbnailPath: shouldBeThumbnail || !person.thumbnailPath 
+                ? `/api/photos/${photo.id}/thumbnail?x=${facialAreaX}&y=${facialAreaY}&w=${facialAreaW}&h=${facialAreaH}`
+                : person.thumbnailPath
+            }
+          });
+          
+          console.log(`📊 Updated person ${person.name} - ${person.photoCount} photos, ${updatedConfidence.toFixed(2)} avg confidence`);
+        } else {
+          // Create new person
+          person = await prisma.person.create({
+            data: {
+              name: `Person ${clusterIdStr}`,
+              eventId: albumId,
+              clusterId: clusterIdStr,
+              photoCount: 1,
+              averageConfidence: faceConfidence,
+              thumbnailPath: `/api/photos/${photo.id}/thumbnail?x=${facialAreaX}&y=${facialAreaY}&w=${facialAreaW}&h=${facialAreaH}`
+            }
+          });
+          
+          console.log(`✨ Created new person: ${person.name} in cluster ${clusterIdStr}`);
+        }
+
+        // Create or update face record
         await prisma.face.upsert({
           where: { fotoId: fotoIdStr },
           create: {
@@ -230,12 +326,18 @@ async function saveProcessingResults(mlResponse: any) {
             photoId: photo.id,
             personId: person.id,
             clusterId: clusterIdStr,
+            embedding: embeddingSafe,
+            facialAreaX,
+            facialAreaY,
+            facialAreaW,
+            facialAreaH,
             faceConfidence
           }
         });
       }
     }
 
+    // Update album statistics
     const albumIds = Array.from(new Set(extracted.map((f: any) => String(f.album_id))));
     for (const albumId of albumIds) {
       const photoCount = await prisma.photo.count({ where: { eventId: albumId } });
@@ -249,11 +351,19 @@ async function saveProcessingResults(mlResponse: any) {
           status: 'COMPLETED'
         }
       });
+
+      console.log(`📊 Album ${albumId} final stats: ${photoCount} photos, ${personCount} people`);
     }
 
-    return { success: true, processed: extracted.length };
+    return { 
+      success: true, 
+      processed: extracted.length,
+      photos: photoMap.size,
+      clusters: centroid?.length || 0,
+      albums: albumIds.length
+    };
   } catch (err) {
-    console.error('Failed to save processing results:', err);
+    console.error('❌ Failed to save processing results:', err);
     throw err;
   }
 }

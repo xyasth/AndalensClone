@@ -83,7 +83,7 @@
     name              String   // Generated name like "Person 1"
     eventId           String
     event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-    clusterId         String   @unique // ChromaDB cluster ID
+    clusterId         String  
     photoCount        Int      @default(0)
     thumbnailPath     String?
     averageConfidence Float    @default(0.0)

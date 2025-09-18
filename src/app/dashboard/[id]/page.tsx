@@ -37,22 +37,23 @@ export default function AlbumDetail() {
             setLoading(true);
             setError('');
             
-            // Fetch album details
-            const albumResponse = await fetch(`/api/events/${id}`, {
-                headers: {
-                    'Authorization': `Bearer ${(session as any)?.accessToken}`
-                }
-            });
+            console.log('🔍 Fetching album data for ID:', id);
+            
+            // Fetch album details - REMOVED Authorization header
+            const albumResponse = await fetch(`/api/events/${id}`);
 
             if (!albumResponse.ok) {
                 if (albumResponse.status === 404) {
                     setError('Album not found');
                     return;
                 }
+                const errorText = await albumResponse.text();
+                console.error('Album fetch error:', errorText);
                 throw new Error(`Failed to fetch album: ${albumResponse.status}`);
             }
 
             const albumData = await albumResponse.json();
+            console.log('📊 Album data received:', albumData);
             setAlbum(albumData);
             setEditForm({
                 name: albumData.name || '',
@@ -60,8 +61,11 @@ export default function AlbumDetail() {
                 description: albumData.description || '',
             });
 
-            // Fetch persons/clusters for this album
-            await fetchPersonsAndPhotos(id as string);
+            // Fetch persons and photos in parallel
+            await Promise.all([
+                fetchPersonsForAlbum(id as string),
+                fetchPhotosForAlbum(id as string)
+            ]);
 
         } catch (error) {
             console.error('Failed to fetch album data:', error);
@@ -71,43 +75,41 @@ export default function AlbumDetail() {
         }
     };
 
-    const fetchPersonsAndPhotos = async (albumId: string) => {
+    const fetchPersonsForAlbum = async (albumId: string) => {
         try {
-            // In a real implementation, you'd have separate endpoints:
-            // const [personsRes, photosRes] = await Promise.all([
-            //   fetch(`/api/events/${albumId}/persons`),
-            //   fetch(`/api/events/${albumId}/photos`)
-            // ]);
-
-            // For now, we'll simulate this by fetching from the database
-            // This would be handled by your existing Prisma setup
+            console.log('👥 Fetching persons for album:', albumId);
             
-            // Fetch persons (clusters) for this album
-            const personsResponse = await fetch(`/api/events/${albumId}/persons`, {
-                headers: {
-                    'Authorization': `Bearer ${(session as any)?.accessToken}`
-                }
-            });
+            // REMOVED Authorization header - uses getServerSession
+            const personsResponse = await fetch(`/api/events/${albumId}/persons`);
 
             if (personsResponse.ok) {
                 const personsData = await personsResponse.json();
+                console.log('✅ Persons fetched:', personsData.length);
                 setPersons(personsData);
+            } else {
+                console.error('Failed to fetch persons:', personsResponse.status);
             }
+        } catch (error) {
+            console.error('Failed to fetch persons:', error);
+        }
+    };
 
-            // Fetch photos for this album
-            const photosResponse = await fetch(`/api/events/${albumId}/photos`, {
-                headers: {
-                    'Authorization': `Bearer ${(session as any)?.accessToken}`
-                }
-            });
+    const fetchPhotosForAlbum = async (albumId: string) => {
+        try {
+            console.log('📸 Fetching photos for album:', albumId);
+            
+            // REMOVED Authorization header - uses getServerSession
+            const photosResponse = await fetch(`/api/events/${albumId}/photos`);
 
             if (photosResponse.ok) {
                 const photosData = await photosResponse.json();
+                console.log('✅ Photos fetched:', photosData.length);
                 setPhotos(photosData);
+            } else {
+                console.error('Failed to fetch photos:', photosResponse.status);
             }
-
         } catch (error) {
-            console.error('Failed to fetch persons/photos:', error);
+            console.error('Failed to fetch photos:', error);
         }
     };
 
@@ -120,12 +122,10 @@ export default function AlbumDetail() {
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            // REMOVED Authorization header - uses getServerSession
             const response = await fetch(`/api/events/${id}`, {
                 method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(session as any)?.accessToken}`
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(editForm)
             });
 
@@ -321,6 +321,18 @@ export default function AlbumDetail() {
                                                         src={person.thumbnailPath}
                                                         alt={person.name}
                                                         className="w-full h-full object-cover"
+                                                        onError={(e) => {
+                                                            // Fallback to avatar if thumbnail fails to load
+                                                            const target = e.target as HTMLImageElement;
+                                                            target.style.display = 'none';
+                                                            target.parentElement!.innerHTML = `
+                                                                <div class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                                                                    <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                                                                    </svg>
+                                                                </div>
+                                                            `;
+                                                        }}
                                                     />
                                                 ) : (
                                                     <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
@@ -335,7 +347,7 @@ export default function AlbumDetail() {
                                                 {person.photoCount} photos
                                             </p>
                                             <p className="text-xs text-gray-500">
-                                                {(person.averageConfidence * 100).toFixed(0)}% confidence
+                                                {Math.round(person.averageConfidence * 100)}% confidence
                                             </p>
                                         </Link>
                                     ))}
@@ -370,9 +382,23 @@ export default function AlbumDetail() {
                                     {photos.map((photo) => (
                                         <div key={photo.id} className="group relative">
                                             <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-                                                <div className="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
-                                                    <ImageIcon className="w-8 h-8 text-gray-500" />
-                                                </div>
+                                                <img
+                                                    src={`/api/photos/${photo.id}`}
+                                                    alt={photo.originalName}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        // Fallback to placeholder if photo fails to load
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.style.display = 'none';
+                                                        target.parentElement!.innerHTML = `
+                                                            <div class="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
+                                                                <svg class="w-8 h-8 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                                                    <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
+                                                                </svg>
+                                                            </div>
+                                                        `;
+                                                    }}
+                                                />
                                             </div>
                                             
                                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
@@ -388,7 +414,7 @@ export default function AlbumDetail() {
                                             <div className="absolute top-2 right-2">
                                                 <div className={`w-3 h-3 rounded-full ${
                                                     photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
-                                                }`} title={`Quality Score: ${(photo.qualityScore * 100).toFixed(0)}%`}></div>
+                                                }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
                                             </div>
 
                                             <div className="absolute top-2 left-2">
@@ -476,6 +502,23 @@ export default function AlbumDetail() {
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Debug Info Panel */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 className="text-sm font-medium text-blue-800 mb-2">
+                        Debug Info
+                    </h3>
+                    <div className="text-sm text-blue-700 space-y-1">
+                        <p><strong>Album ID:</strong> {album.id}</p>
+                        <p><strong>Status:</strong> {album.status}</p>
+                        <p><strong>Drive Link:</strong> {album.driveLink ? 'Yes' : 'No'}</p>
+                        <p><strong>Persons Found:</strong> {persons.length}</p>
+                        <p><strong>Photos Found:</strong> {photos.length}</p>
+                        <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces.length > 0).length}</p>
+                    </div>
+                </div>
             </div>
         </div>
     );

@@ -37,12 +37,13 @@ export async function GET(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const eventData = {
+    const responseEvent = {
       id: event.id,
       name: event.name,
       title: event.title,
       description: event.description,
       createdAt: event.createdAt.toISOString(),
+      updatedAt: event.updatedAt.toISOString(),
       photoCount: event._count.photos,
       personCount: event._count.persons,
       status: event.status.toLowerCase(),
@@ -50,7 +51,7 @@ export async function GET(
       driveFolderId: event.driveFolderId
     };
 
-    return NextResponse.json(eventData);
+    return NextResponse.json(responseEvent);
   } catch (error) {
     console.error('Failed to fetch event:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -69,52 +70,30 @@ export async function PUT(
     }
 
     const { eventId } = params;
-    const body = await request.json();
-    const { name, title, description } = body;
+    const { name, title, description } = await request.json();
 
-    const existingEvent = await prisma.event.findFirst({
+    if (!name || !title) {
+      return NextResponse.json({ error: 'Name and title are required' }, { status: 400 });
+    }
+
+    const event = await prisma.event.updateMany({
       where: {
         id: eventId,
         user: { email: session.user.email }
+      },
+      data: {
+        name,
+        title,
+        description,
+        updatedAt: new Date()
       }
     });
 
-    if (!existingEvent) {
-      return NextResponse.json({ error: 'Event not found or access denied' }, { status: 403 });
+    if (event.count === 0) {
+      return NextResponse.json({ error: 'Event not found or access denied' }, { status: 404 });
     }
 
-    const updatedEvent = await prisma.event.update({
-      where: { id: eventId },
-      data: {
-        name: name || existingEvent.name,
-        title: title || existingEvent.title,
-        description: description !== undefined ? description : existingEvent.description,
-        updatedAt: new Date()
-      },
-      include: {
-        _count: {
-          select: {
-            photos: true,
-            persons: true
-          }
-        }
-      }
-    });
-
-    const eventData = {
-      id: updatedEvent.id,
-      name: updatedEvent.name,
-      title: updatedEvent.title,
-      description: updatedEvent.description,
-      createdAt: updatedEvent.createdAt.toISOString(),
-      photoCount: updatedEvent._count.photos,
-      personCount: updatedEvent._count.persons,
-      status: updatedEvent.status.toLowerCase(),
-      driveLink: updatedEvent.driveLink,
-      driveFolderId: updatedEvent.driveFolderId
-    };
-
-    return NextResponse.json(eventData);
+    return NextResponse.json({ success: true, message: 'Event updated successfully' });
   } catch (error) {
     console.error('Failed to update event:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

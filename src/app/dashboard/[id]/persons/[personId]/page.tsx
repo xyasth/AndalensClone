@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Image as ImageIcon, Tag } from 'lucide-react';
+import { ArrowLeft, User, Image as ImageIcon, Tag, Loader2, AlertCircle, Edit } from 'lucide-react';
 import { Person, Photo, Event } from '@/types';
 
 export default function AlbumPersonDetailPage() {
@@ -16,113 +16,114 @@ export default function AlbumPersonDetailPage() {
   const [person, setPerson] = useState<Person | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState('');
 
   useEffect(() => {
-    const fetchPersonData = async () => {
-      try {
-        // In real implementation:
-        // const [albumRes, personRes, photosRes] = await Promise.all([
-        //   fetch(`/api/events/${albumId}`),
-        //   fetch(`/api/persons/${personId}`),
-        //   fetch(`/api/persons/${personId}/photos`)
-        // ]);
-        
-        // For now, use dummy data
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const albumData: Event = {
-          id: albumId,
-          name: 'Wedding Ceremony',
-          title: "Joren's Wedding",
-          description: 'A beautiful wedding ceremony held in Bali.',
-          createdAt: new Date().toISOString(),
-          photoCount: 45,
-          personCount: 8,
-          status: 'completed'
-        };
-
-        const personData: Person = {
-          id: personId,
-          name: 'Person 1',
-          eventId: albumId,
-          cluster_id: 'cluster-001',
-          photoCount: 12,
-          averageConfidence: 0.92,
-          createdAt: new Date().toISOString()
-        };
-
-        const photosData: Photo[] = [
-          {
-            id: 'photo-1',
-            originalName: 'wedding_ceremony_001.jpg',
-            path: `/uploads/${albumId}/wedding_ceremony_001.jpg`,
-            eventId: albumId,
-            uploadedAt: new Date().toISOString(),
-            isGoodQuality: true,
-            qualityScore: 0.95,
-            faces: [
-              {
-                foto_id: 'face-1-1',
-                album: {
-                  id: albumId,
-                  name: albumData.name,
-                  event: { id: albumId, name: albumData.name }
-                },
-                embedding: Array.from({length: 512}, () => Math.random()),
-                cluster_id: 'cluster-001',
-                path: `/uploads/${albumId}/wedding_ceremony_001.jpg`,
-                facial_area: { x: 120, y: 80, w: 100, h: 120 },
-                face_confidence: 0.92
-              }
-            ],
-            processedAt: new Date().toISOString(),
-            status: 'completed'
-          },
-          {
-            id: 'photo-2',
-            originalName: 'wedding_group_002.jpg',
-            path: `/uploads/${albumId}/wedding_group_002.jpg`,
-            eventId: albumId,
-            uploadedAt: new Date().toISOString(),
-            isGoodQuality: true,
-            qualityScore: 0.88,
-            faces: [
-              {
-                foto_id: 'face-2-1',
-                album: {
-                  id: albumId,
-                  name: albumData.name,
-                  event: { id: albumId, name: albumData.name }
-                },
-                embedding: Array.from({length: 512}, () => Math.random()),
-                cluster_id: 'cluster-001',
-                path: `/uploads/${albumId}/wedding_group_002.jpg`,
-                facial_area: { x: 200, y: 100, w: 110, h: 130 },
-                face_confidence: 0.89
-              }
-            ],
-            processedAt: new Date().toISOString(),
-            status: 'completed'
-          }
-        ];
-        
-        setAlbum(albumData);
-        setPerson(personData);
-        setPhotos(photosData);
-      } catch (error) {
-        console.error('Failed to fetch person data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchPersonData();
   }, [albumId, personId]);
+
+  const fetchPersonData = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      console.log('🔍 Fetching person data for:', { albumId, personId });
+
+      // Fetch album, person, and person's photos in parallel
+      const [albumRes, personRes, photosRes] = await Promise.all([
+        fetch(`/api/events/${albumId}`),
+        fetch(`/api/persons/${personId}`),
+        fetch(`/api/persons/${personId}/photos`)
+      ]);
+
+      if (!albumRes.ok) {
+        throw new Error(`Album fetch failed: ${albumRes.status}`);
+      }
+      
+      if (!personRes.ok) {
+        if (personRes.status === 404) {
+          setError('Person not found');
+          return;
+        }
+        throw new Error(`Person fetch failed: ${personRes.status}`);
+      }
+
+      const albumData = await albumRes.json();
+      const personData = await personRes.json();
+      
+      console.log('✅ Album and person data fetched successfully');
+      setAlbum(albumData);
+      setPerson(personData);
+      setNewName(personData.name);
+
+      if (photosRes.ok) {
+        const photosResponse = await photosRes.json();
+        console.log('✅ Person photos fetched:', photosResponse.photos?.length || 0);
+        setPhotos(photosResponse.photos || []);
+      } else {
+        console.warn('Failed to fetch person photos:', photosRes.status);
+        setPhotos([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch person data:', error);
+      setError('Failed to load person data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNameUpdate = async () => {
+    if (!newName.trim() || newName === person?.name) {
+      setEditingName(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/persons/${personId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update person name');
+      }
+
+      // Update local state
+      if (person) {
+        setPerson({ ...person, name: newName.trim() });
+      }
+      
+      setEditingName(false);
+    } catch (error) {
+      console.error('Failed to update person name:', error);
+      alert('Failed to update name. Please try again.');
+    }
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <p>Loading person data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
+          <Link href={`/dashboard/${albumId}`} className="text-blue-600 hover:text-blue-700">
+            ← Back to album
+          </Link>
+        </div>
       </div>
     );
   }
@@ -154,13 +155,66 @@ export default function AlbumPersonDetailPage() {
                 <ArrowLeft className="w-5 h-5" />
               </Link>
               <div className="flex items-center space-x-4">
-                {/* Person Avatar */}
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                  <User className="w-8 h-8 text-white" />
+                {/* Person Avatar/Thumbnail */}
+                <div className="w-16 h-16 rounded-full overflow-hidden">
+                  {person.thumbnailPath ? (
+                    <img
+                      src={person.thumbnailPath}
+                      alt={person.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.parentElement!.innerHTML = `
+                          <div class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                            </svg>
+                          </div>
+                        `;
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                      <User className="w-8 h-8 text-white" />
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">{person.name}</h1>
-                  <p className="text-gray-600 mt-1">Photos from {album.title}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    {editingName ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          className="text-3xl font-bold text-gray-900 bg-white border border-gray-300 rounded px-2 py-1"
+                          onBlur={handleNameUpdate}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleNameUpdate();
+                            }
+                            if (e.key === 'Escape') {
+                              setNewName(person.name);
+                              setEditingName(false);
+                            }
+                          }}
+                          autoFocus
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <h1 className="text-3xl font-bold text-gray-900">{person.name}</h1>
+                        <button
+                          onClick={() => setEditingName(true)}
+                          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-gray-600">Photos from {album.title}</p>
                   <p className="text-sm text-gray-500">{album.name}</p>
                 </div>
               </div>
@@ -173,7 +227,10 @@ export default function AlbumPersonDetailPage() {
               </div>
               <div className="flex items-center">
                 <Tag className="w-4 h-4 mr-2" />
-                {person.cluster_id}
+                Cluster {person.cluster_id}
+              </div>
+              <div className="text-sm">
+                {Math.round(person.averageConfidence * 100)}% avg confidence
               </div>
             </div>
           </div>
@@ -206,22 +263,37 @@ export default function AlbumPersonDetailPage() {
                 return (
                   <div key={photo.id} className="group relative">
                     <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:shadow-md transition-shadow">
-                      <div className="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center relative">
-                        <ImageIcon className="w-8 h-8 text-gray-500" />
-                        
-                        {/* Face detection indicator */}
-                        {personFace && (
-                          <div 
-                            className="absolute border-2 border-green-400 bg-green-400 bg-opacity-20"
-                            style={{
-                              left: `${(personFace.facial_area.x / 500) * 100}%`,
-                              top: `${(personFace.facial_area.y / 500) * 100}%`,
-                              width: `${(personFace.facial_area.w / 500) * 100}%`,
-                              height: `${(personFace.facial_area.h / 500) * 100}%`
-                            }}
-                          />
-                        )}
-                      </div>
+                      <img
+                        src={`/api/photos/${photo.id}`}
+                        alt={photo.originalName}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.parentElement!.innerHTML = `
+                            <div class="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
+                              <svg class="w-8 h-8 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
+                              </svg>
+                            </div>
+                          `;
+                        }}
+                      />
+                      
+                      {/* Face detection indicator overlay */}
+                      {personFace && (
+                        <div 
+                          className="absolute border-2 border-green-400 bg-green-400 bg-opacity-20 pointer-events-none"
+                          style={{
+                            left: `${(personFace.facial_area.x / 1000) * 100}%`,
+                            top: `${(personFace.facial_area.y / 1000) * 100}%`,
+                            width: `${(personFace.facial_area.w / 1000) * 100}%`,
+                            height: `${(personFace.facial_area.h / 1000) * 100}%`,
+                            minWidth: '20px',
+                            minHeight: '20px'
+                          }}
+                        />
+                      )}
                     </div>
                     
                     {/* Photo info overlay */}
@@ -233,7 +305,7 @@ export default function AlbumPersonDetailPage() {
                         </p>
                         {personFace && (
                           <p className="text-xs opacity-75">
-                            Confidence: {(personFace.face_confidence * 100).toFixed(0)}%
+                            Confidence: {Math.round(personFace.face_confidence * 100)}%
                           </p>
                         )}
                       </div>
@@ -243,7 +315,7 @@ export default function AlbumPersonDetailPage() {
                     <div className="absolute top-2 right-2">
                       <div className={`w-3 h-3 rounded-full ${
                         photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
-                      }`} title={`Quality Score: ${(photo.qualityScore * 100).toFixed(0)}%`}></div>
+                      }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
                     </div>
                   </div>
                 );
@@ -253,17 +325,14 @@ export default function AlbumPersonDetailPage() {
             {/* Statistics */}
             <div className="mt-8 bg-white rounded-lg border border-gray-200 p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Statistics for {person.name}</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">{photos.length}</div>
                   <div className="text-sm text-gray-600">Total Photos</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    {Math.round(photos.reduce((sum, photo) => {
-                      const face = photo.faces.find(f => f.cluster_id === person.cluster_id);
-                      return sum + (face?.face_confidence || 0);
-                    }, 0) / photos.length * 100)}%
+                    {Math.round(person.averageConfidence * 100)}%
                   </div>
                   <div className="text-sm text-gray-600">Avg. Confidence</div>
                 </div>
@@ -273,6 +342,25 @@ export default function AlbumPersonDetailPage() {
                   </div>
                   <div className="text-sm text-gray-600">High Quality</div>
                 </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {photos.reduce((sum, photo) => sum + photo.faces.length, 0)}
+                  </div>
+                  <div className="text-sm text-gray-600">Total Faces</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Debug Info */}
+            <div className="mt-6 bg-gray-50 rounded-lg border border-gray-200 p-4">
+              <h4 className="text-sm font-medium text-gray-800 mb-2">Debug Information</h4>
+              <div className="text-xs text-gray-600 space-y-1">
+                <p><strong>Person ID:</strong> {person.id}</p>
+                <p><strong>Cluster ID:</strong> {person.cluster_id}</p>
+                <p><strong>Album ID:</strong> {albumId}</p>
+                <p><strong>Thumbnail Path:</strong> {person.thumbnailPath || 'None'}</p>
+                <p><strong>Photos Loaded:</strong> {photos.length}</p>
+                <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces.length > 0).length}</p>
               </div>
             </div>
           </>

@@ -18,6 +18,7 @@ export async function GET(
 
     const { eventId } = params;
 
+    // Verify user owns this event
     const event = await prisma.event.findFirst({
       where: {
         id: eventId,
@@ -29,14 +30,13 @@ export async function GET(
       return NextResponse.json({ error: 'Event not found or access denied' }, { status: 403 });
     }
 
+    // Get all persons for this event
     const persons = await prisma.person.findMany({
       where: { eventId: eventId },
-      include: {
-        _count: {
-          select: { faces: true }
-        }
-      },
-      orderBy: { photoCount: 'desc' }
+      orderBy: [
+        { photoCount: 'desc' }, // Most photos first
+        { averageConfidence: 'desc' } // Then by confidence
+      ]
     });
 
     const personsData = persons.map(person => ({
@@ -45,11 +45,13 @@ export async function GET(
       eventId: person.eventId,
       cluster_id: person.clusterId,
       photoCount: person.photoCount,
-      averageConfidence: person.averageConfidence,
       thumbnailPath: person.thumbnailPath,
-      createdAt: person.createdAt.toISOString()
+      averageConfidence: person.averageConfidence,
+      createdAt: person.createdAt.toISOString(),
+      updatedAt: person.updatedAt.toISOString()
     }));
 
+    console.log(`✅ Fetched ${personsData.length} persons for event ${eventId}`);
     return NextResponse.json(personsData);
   } catch (error) {
     console.error('Failed to fetch persons:', error);
