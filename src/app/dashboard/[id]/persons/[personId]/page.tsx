@@ -11,7 +11,7 @@ export default function AlbumPersonDetailPage() {
   const router = useRouter();
   const albumId = params.id as string;
   const personId = params.personId as string;
-  
+
   const [album, setAlbum] = useState<Event | null>(null);
   const [person, setPerson] = useState<Person | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -28,7 +28,7 @@ export default function AlbumPersonDetailPage() {
     try {
       setLoading(true);
       setError('');
-      
+
       console.log('🔍 Fetching person data for:', { albumId, personId });
 
       // Fetch album, person, and person's photos in parallel
@@ -41,7 +41,7 @@ export default function AlbumPersonDetailPage() {
       if (!albumRes.ok) {
         throw new Error(`Album fetch failed: ${albumRes.status}`);
       }
-      
+
       if (!personRes.ok) {
         if (personRes.status === 404) {
           setError('Person not found');
@@ -52,7 +52,7 @@ export default function AlbumPersonDetailPage() {
 
       const albumData = await albumRes.json();
       const personData = await personRes.json();
-      
+
       console.log('✅ Album and person data fetched successfully');
       setAlbum(albumData);
       setPerson(personData);
@@ -95,7 +95,7 @@ export default function AlbumPersonDetailPage() {
       if (person) {
         setPerson({ ...person, name: newName.trim() });
       }
-      
+
       setEditingName(false);
     } catch (error) {
       console.error('Failed to update person name:', error);
@@ -159,7 +159,7 @@ export default function AlbumPersonDetailPage() {
                 <div className="w-16 h-16 rounded-full overflow-hidden">
                   {person.thumbnailPath ? (
                     <img
-                      src={person.thumbnailPath}
+                      src={`/api/persons/${person.id}/thumbnail`}
                       alt={person.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {
@@ -219,7 +219,7 @@ export default function AlbumPersonDetailPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-6 text-sm text-gray-500">
               <div className="flex items-center">
                 <ImageIcon className="w-4 h-4 mr-2" />
@@ -250,7 +250,7 @@ export default function AlbumPersonDetailPage() {
           <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
             <ImageIcon className="w-16 h-16 mx-auto text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No photos found</h3>
-            <p className="text-gray-600">This person hasn't been detected in any photos yet</p>
+            <p className="text-gray-600">This person hasnt been detected in any photos yet</p>
           </div>
         ) : (
           <>
@@ -259,7 +259,7 @@ export default function AlbumPersonDetailPage() {
               {photos.map((photo) => {
                 // Find the face data for this person in this photo
                 const personFace = photo.faces.find(face => face.cluster_id === person.cluster_id);
-                
+
                 return (
                   <div key={photo.id} className="group relative">
                     <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:shadow-md transition-shadow">
@@ -279,10 +279,10 @@ export default function AlbumPersonDetailPage() {
                           `;
                         }}
                       />
-                      
+
                       {/* Face detection indicator overlay */}
                       {personFace && (
-                        <div 
+                        <div
                           className="absolute border-2 border-green-400 bg-green-400 bg-opacity-20 pointer-events-none"
                           style={{
                             left: `${(personFace.facial_area.x / 1000) * 100}%`,
@@ -295,7 +295,7 @@ export default function AlbumPersonDetailPage() {
                         />
                       )}
                     </div>
-                    
+
                     {/* Photo info overlay */}
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
                       <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
@@ -310,12 +310,11 @@ export default function AlbumPersonDetailPage() {
                         )}
                       </div>
                     </div>
-                    
+
                     {/* Quality indicator */}
                     <div className="absolute top-2 right-2">
-                      <div className={`w-3 h-3 rounded-full ${
-                        photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
-                      }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
+                      <div className={`w-3 h-3 rounded-full ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
+                        }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
                     </div>
                   </div>
                 );

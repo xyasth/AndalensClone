@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       hasSession: !!session,
       hasUser: !!session?.user,
       userEmail: session?.user?.email,
-      hasAccessToken: !!(session as any)?.accessToken
+      hasAccessToken: !!session?.accessToken
     });
     
     if (!session?.user?.email) {

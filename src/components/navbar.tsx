@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Navbar() {
     {/*Dummy data*/ }
@@ -30,9 +31,9 @@ export default function Navbar() {
 
             <div className="flex items-center gap-6">
                 {/*Navigation Links*/}
-                <a href="/dashboard" className="text-gray-700 hover:text-blue-600">
+                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
                     Beranda
-                </a>
+                </Link>
                 <a href="#" className="text-gray-700 hover:text-blue-600">
                     Tentang Kami
                 </a>

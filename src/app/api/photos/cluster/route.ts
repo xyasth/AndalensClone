@@ -9,7 +9,7 @@ declare global {
 const prisma = global.prisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://48f9c5d6134c.ngrok-free.app/extract';
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://e2c6ed78a72e.ngrok-free.app/extract';
 
 export async function POST(request: NextRequest) {
   try {
