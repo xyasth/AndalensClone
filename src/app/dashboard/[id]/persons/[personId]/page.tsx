@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Image as ImageIcon, Tag, Loader2, AlertCircle, Edit } from 'lucide-react';
+import { ArrowLeft, User, Image as ImageIcon, Tag, Loader2, AlertCircle, Edit, RefreshCw } from 'lucide-react';
 import { Person, Photo, Event } from '@/types';
 
 export default function AlbumPersonDetailPage() {
@@ -19,6 +19,7 @@ export default function AlbumPersonDetailPage() {
   const [error, setError] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState('');
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchPersonData();
@@ -28,6 +29,7 @@ export default function AlbumPersonDetailPage() {
     try {
       setLoading(true);
       setError('');
+      setImageErrors(new Set()); // Reset image errors
 
       console.log('🔍 Fetching person data for:', { albumId, personId });
 
@@ -64,11 +66,13 @@ export default function AlbumPersonDetailPage() {
         setPhotos(photosResponse.photos || []);
       } else {
         console.warn('Failed to fetch person photos:', photosRes.status);
+        const errorText = await photosRes.text();
+        console.warn('Photos error details:', errorText);
         setPhotos([]);
       }
     } catch (error) {
       console.error('Failed to fetch person data:', error);
-      setError('Failed to load person data');
+      setError('Failed to load person data. Please try refreshing the page.');
     } finally {
       setLoading(false);
     }
@@ -103,6 +107,19 @@ export default function AlbumPersonDetailPage() {
     }
   };
 
+  const handleImageError = (photoId: string) => {
+    console.log('❌ Image failed to load:', photoId);
+    setImageErrors(prev => new Set(prev).add(photoId));
+  };
+
+  const retryImage = (photoId: string) => {
+    setImageErrors(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(photoId);
+      return newSet;
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -117,12 +134,23 @@ export default function AlbumPersonDetailPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
-          <Link href={`/dashboard/${albumId}`} className="text-blue-600 hover:text-blue-700">
-            ← Back to album
-          </Link>
+          <div className="space-y-3">
+            <button
+              onClick={fetchPersonData}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mr-3"
+            >
+              Try Again
+            </button>
+            <Link 
+              href={`/dashboard/${albumId}`} 
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              ← Back to Album
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -163,6 +191,7 @@ export default function AlbumPersonDetailPage() {
                       alt={person.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {
+                        console.log('❌ Thumbnail failed for person:', person.id);
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         target.parentElement!.innerHTML = `
@@ -230,8 +259,16 @@ export default function AlbumPersonDetailPage() {
                 Cluster {person.cluster_id}
               </div>
               <div className="text-sm">
-                {Math.round(person.averageConfidence * 100)}% avg confidence
+                {Math.round((person.averageConfidence || 0) * 100)}% avg confidence
               </div>
+              <button
+                onClick={fetchPersonData}
+                className="flex items-center px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                title="Refresh data"
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Refresh
+              </button>
             </div>
           </div>
         </div>
@@ -250,62 +287,74 @@ export default function AlbumPersonDetailPage() {
           <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
             <ImageIcon className="w-16 h-16 mx-auto text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No photos found</h3>
-            <p className="text-gray-600">This person hasnt been detected in any photos yet</p>
+            <p className="text-gray-600 mb-4">This person hasn't been detected in any photos yet</p>
+            <button
+              onClick={fetchPersonData}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Refresh Data
+            </button>
           </div>
         ) : (
           <>
             {/* Photos Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
               {photos.map((photo) => {
-                // Find the face data for this person in this photo
                 const personFace = photo.faces.find(face => face.cluster_id === person.cluster_id);
+                const hasImageError = imageErrors.has(photo.id);
 
                 return (
                   <div key={photo.id} className="group relative">
-                    <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:shadow-md transition-shadow">
-                      <img
-                        src={`/api/photos/${photo.id}`}
-                        alt={photo.originalName}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.parentElement!.innerHTML = `
-                            <div class="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
-                              <svg class="w-8 h-8 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
-                              </svg>
-                            </div>
-                          `;
-                        }}
-                      />
+                    <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-shadow">
+                      {hasImageError ? (
+                        <div className="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex flex-col items-center justify-center p-4">
+                          <AlertCircle className="w-8 h-8 text-gray-500 mb-2" />
+                          <p className="text-xs text-gray-600 text-center mb-2">Failed to load image</p>
+                          <button
+                            onClick={() => retryImage(photo.id)}
+                            className="px-2 py-1 text-white text-xs rounded hover:bg-gray-600"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <img
+                            src={`/api/photos/${photo.id}`}
+                            alt={photo.originalName}
+                            className="w-full h-full object-cover"
+                            onError={() => handleImageError(photo.id)}
+                            loading="lazy"
+                          />
 
-                      {/* Face detection indicator overlay */}
-                      {personFace && (
-                        <div
-                          className="absolute border-2 border-green-400 bg-green-400 bg-opacity-20 pointer-events-none"
-                          style={{
-                            left: `${(personFace.facial_area.x / 1000) * 100}%`,
-                            top: `${(personFace.facial_area.y / 1000) * 100}%`,
-                            width: `${(personFace.facial_area.w / 1000) * 100}%`,
-                            height: `${(personFace.facial_area.h / 1000) * 100}%`,
-                            minWidth: '20px',
-                            minHeight: '20px'
-                          }}
-                        />
+                          {/* Face detection indicator overlay */}
+                          {personFace && (
+                            <div
+                              className=""
+                              style={{
+                                left: `${Math.min(Math.max((personFace.facial_area.x / 1000) * 100, 0), 95)}%`,
+                                top: `${Math.min(Math.max((personFace.facial_area.y / 1000) * 100, 0), 95)}%`,
+                                width: `${Math.min((personFace.facial_area.w / 1000) * 100, 50)}%`,
+                                height: `${Math.min((personFace.facial_area.h / 1000) * 100, 50)}%`,
+                                minWidth: '20px',
+                                minHeight: '20px'
+                              }}
+                            />
+                          )}
+                        </>
                       )}
                     </div>
 
                     {/* Photo info overlay */}
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
+                    <div className="absolute inset-0 bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
                       <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                         <p className="text-xs font-medium truncate">{photo.originalName}</p>
                         <p className="text-xs opacity-75">
                           {new Date(photo.uploadedAt).toLocaleDateString()}
                         </p>
                         {personFace && (
-                          <p className="text-xs opacity-75">
-                            Confidence: {Math.round(personFace.face_confidence * 100)}%
+                          <p >
+                            Confidence: {Math.round((personFace.face_confidence || 0) * 100)}%
                           </p>
                         )}
                       </div>
@@ -313,8 +362,10 @@ export default function AlbumPersonDetailPage() {
 
                     {/* Quality indicator */}
                     <div className="absolute top-2 right-2">
-                      <div className={`w-3 h-3 rounded-full ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
-                        }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
+                      <div 
+                        className={`w-3 h-3 rounded-full ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'}`} 
+                        title={`Quality Score: ${Math.round((photo.qualityScore || 0) * 100)}%`}>
+                      </div>
                     </div>
                   </div>
                 );
@@ -331,7 +382,7 @@ export default function AlbumPersonDetailPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    {Math.round(person.averageConfidence * 100)}%
+                    {Math.round((person.averageConfidence || 0) * 100)}%
                   </div>
                   <div className="text-sm text-gray-600">Avg. Confidence</div>
                 </div>
@@ -343,7 +394,7 @@ export default function AlbumPersonDetailPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-orange-600">
-                    {photos.reduce((sum, photo) => sum + photo.faces.length, 0)}
+                    {photos.reduce((sum, photo) => sum + (photo.faces?.length || 0), 0)}
                   </div>
                   <div className="text-sm text-gray-600">Total Faces</div>
                 </div>
@@ -359,9 +410,42 @@ export default function AlbumPersonDetailPage() {
                 <p><strong>Album ID:</strong> {albumId}</p>
                 <p><strong>Thumbnail Path:</strong> {person.thumbnailPath || 'None'}</p>
                 <p><strong>Photos Loaded:</strong> {photos.length}</p>
-                <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces.length > 0).length}</p>
+                <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces && p.faces.length > 0).length}</p>
+                <p><strong>Image Errors:</strong> {imageErrors.size}</p>
+                {imageErrors.size > 0 && (
+                  <p><strong>Failed Images:</strong> {Array.from(imageErrors).join(', ')}</p>
+                )}
               </div>
             </div>
+
+            {/* Troubleshooting Panel */}
+            {(imageErrors.size > 0 || photos.length === 0) && (
+              <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-yellow-800 mb-2">Troubleshooting</h4>
+                <div className="text-sm text-yellow-700 space-y-2">
+                  {imageErrors.size > 0 && (
+                    <p>• Some images failed to load. This may be due to Google Drive access issues or missing files.</p>
+                  )}
+                  {photos.length === 0 && (
+                    <p>• No photos found for this person. The clustering process may not have completed yet.</p>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => setImageErrors(new Set())}
+                      className="px-3 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700"
+                    >
+                      Retry All Images
+                    </button>
+                    <button
+                      onClick={fetchPersonData}
+                      className="px-3 py-1 border border-yellow-600 text-yellow-700 text-xs rounded hover:bg-yellow-100"
+                    >
+                      Refresh Data
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

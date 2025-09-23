@@ -17,7 +17,10 @@ export async function GET(
     }
 
     const { personId } = await context.params;
+    
+    console.log('🔍 Fetching person data for:', personId);
 
+    // Get person with event details
     const person = await prisma.person.findFirst({
       where: {
         id: personId,
@@ -33,36 +36,45 @@ export async function GET(
     });
 
     if (!person) {
+      console.log('❌ Person not found:', personId);
       return NextResponse.json({ error: 'Person not found' }, { status: 404 });
     }
 
-    const responsePerson = {
+    console.log('✅ Person found:', {
       id: person.id,
       name: person.name,
+      clusterId: person.clusterId,
+      eventId: person.eventId
+    });
+
+    // Return person data in expected format
+    const responseData = {
+      id: person.id,
+      name: person.name,
+      cluster_id: person.clusterId, // Key fix: match frontend expectations
       eventId: person.eventId,
-      cluster_id: person.clusterId,
       photoCount: person.photoCount,
-      thumbnailPath: person.thumbnailPath,
       averageConfidence: person.averageConfidence,
-      createdAt: person.createdAt.toISOString(),
-      updatedAt: person.updatedAt.toISOString(),
+      thumbnailPath: person.thumbnailPath,
       event: {
         id: person.event.id,
         name: person.event.name,
         title: person.event.title
-      }
+      },
+      createdAt: person.createdAt.toISOString(),
+      updatedAt: person.updatedAt.toISOString()
     };
 
-    return NextResponse.json(responsePerson);
+    return NextResponse.json(responseData);
   } catch (error) {
-    console.error('Failed to fetch person:', error);
+    console.error('❌ Failed to fetch person:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { personId: string } }
+  context: { params: Promise<{ personId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -71,14 +83,15 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = await context.params;
     const { name } = await request.json();
 
-    if (!name || name.trim().length === 0) {
+    if (!name?.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
-    const person = await prisma.person.updateMany({
+    // Update person name (with user verification)
+    const updatedPerson = await prisma.person.updateMany({
       where: {
         id: personId,
         event: {
@@ -93,13 +106,16 @@ export async function PUT(
       }
     });
 
-    if (person.count === 0) {
-      return NextResponse.json({ error: 'Person not found' }, { status: 404 });
+    if (updatedPerson.count === 0) {
+      return NextResponse.json({ error: 'Person not found or access denied' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, message: 'Person updated successfully' });
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Person name updated successfully' 
+    });
   } catch (error) {
-    console.error('Failed to update person:', error);
+    console.error('❌ Failed to update person:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -22,36 +22,33 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '50');
     const skip = (page - 1) * limit;
 
+    console.log('🔍 Fetching photos for person:', personId);
+
+    // First verify person exists and user has access
     const person = await prisma.person.findFirst({
       where: {
         id: personId,
         event: {
-          user: {
-            email: session.user.email
-          }
+          user: { email: session.user.email }
         }
       },
-      include: {
-        event: true
-      }
+      include: { event: true }
     });
 
     if (!person) {
       return NextResponse.json({ error: 'Person not found' }, { status: 404 });
     }
 
+    // Get all faces for this person with their photos
     const faces = await prisma.face.findMany({
-      where: {
-        personId: personId
-      },
+      where: { personId: personId },
       include: {
         photo: true
       },
-      orderBy: {
-        photo: {
-          uploadedAt: 'desc'
-        }
-      },
+      orderBy: [
+        { faceConfidence: 'desc' }, // Best faces first
+        { photo: { uploadedAt: 'desc' } }
+      ],
       skip,
       take: limit
     });
@@ -60,7 +57,8 @@ export async function GET(
       where: { personId: personId }
     });
 
-    const responsePhotos = faces.map(face => ({
+    // Transform to match expected format
+    const photos = faces.map(face => ({
       id: face.photo.id,
       originalName: face.photo.originalName,
       path: face.photo.path,
@@ -70,6 +68,7 @@ export async function GET(
       qualityScore: face.photo.qualityScore,
       processedAt: face.photo.processedAt?.toISOString(),
       status: face.photo.status.toLowerCase(),
+      driveFileId: face.photo.driveFileId,
       faces: [{
         foto_id: face.fotoId,
         album: {
@@ -90,8 +89,10 @@ export async function GET(
       }]
     }));
 
+    console.log(`✅ Fetched ${photos.length} photos for person ${person.name}`);
+
     return NextResponse.json({
-      photos: responsePhotos,
+      photos,
       person: {
         id: person.id,
         name: person.name,
@@ -113,7 +114,7 @@ export async function GET(
       }
     });
   } catch (error) {
-    console.error('Failed to fetch person photos:', error);
+    console.error('❌ Failed to fetch person photos:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
