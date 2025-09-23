@@ -401,7 +401,7 @@ export default function AlbumDetail() {
                                                 />
                                             </div>
                                             
-                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
+                                            <div className="absolute inset-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
                                                 <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <p className="text-xs font-medium truncate">{photo.originalName}</p>
                                                     <p className="text-xs opacity-75">{photo.faces.length} faces</p>

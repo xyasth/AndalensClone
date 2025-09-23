@@ -1,3 +1,4 @@
+// api/photos/[photoId]/thumbnail/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -7,7 +8,7 @@ const prisma = new PrismaClient();
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { photoId: string } }
+  context: { params: Promise<{ photoId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -16,12 +17,17 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // FIX: Await params in Next.js 15
+    const params = await context.params;
     const { photoId } = params;
+    
     const { searchParams } = new URL(request.url);
     const x = parseInt(searchParams.get('x') || '0');
     const y = parseInt(searchParams.get('y') || '0');
     const w = parseInt(searchParams.get('w') || '100');
     const h = parseInt(searchParams.get('h') || '100');
+
+    console.log('🖼️ Serving thumbnail for photo:', photoId, `Crop: ${x},${y},${w}x${h}`);
 
     // Find the photo and verify user access
     const photo = await prisma.photo.findFirst({
@@ -36,6 +42,7 @@ export async function GET(
     });
 
     if (!photo) {
+      console.error('❌ Photo not found for thumbnail:', photoId);
       return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     }
 
@@ -44,6 +51,7 @@ export async function GET(
       const accessToken = (session as any).accessToken;
       
       if (!accessToken) {
+        console.error('❌ No Google Drive access token for thumbnail');
         return NextResponse.json({ error: 'No Google Drive access' }, { status: 401 });
       }
 
@@ -58,6 +66,7 @@ export async function GET(
       );
 
       if (!driveResponse.ok) {
+        console.error('❌ Drive API error for thumbnail:', driveResponse.status);
         return NextResponse.json({ error: 'Failed to fetch from Google Drive' }, { status: 404 });
       }
 
@@ -70,6 +79,8 @@ export async function GET(
                          extension === 'gif' ? 'image/gif' : 
                          extension === 'webp' ? 'image/webp' : 'image/jpeg';
 
+      console.log('✅ Serving thumbnail successfully:', photo.originalName);
+
       return new Response(imageBuffer, {
         headers: {
           'Content-Type': contentType,
@@ -81,7 +92,7 @@ export async function GET(
 
     return NextResponse.json({ error: 'Local file serving not implemented' }, { status: 501 });
   } catch (error) {
-    console.error('Failed to serve thumbnail:', error);
+    console.error('❌ Failed to serve thumbnail:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

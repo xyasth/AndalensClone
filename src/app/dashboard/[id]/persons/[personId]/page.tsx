@@ -280,10 +280,9 @@ export default function AlbumPersonDetailPage() {
                         }}
                       />
                       
-                      {/* Face detection indicator overlay */}
                       {personFace && (
                         <div 
-                          className="absolute border-2 border-green-400 bg-green-400 bg-opacity-20 pointer-events-none"
+                          className="absolute border-2  pointer-events-none"
                           style={{
                             left: `${(personFace.facial_area.x / 1000) * 100}%`,
                             top: `${(personFace.facial_area.y / 1000) * 100}%`,
@@ -297,7 +296,7 @@ export default function AlbumPersonDetailPage() {
                     </div>
                     
                     {/* Photo info overlay */}
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
+                    <div className="absolute inset-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
                       <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                         <p className="text-xs font-medium truncate">{photo.originalName}</p>
                         <p className="text-xs opacity-75">
@@ -311,7 +310,6 @@ export default function AlbumPersonDetailPage() {
                       </div>
                     </div>
                     
-                    {/* Quality indicator */}
                     <div className="absolute top-2 right-2">
                       <div className={`w-3 h-3 rounded-full ${
                         photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
