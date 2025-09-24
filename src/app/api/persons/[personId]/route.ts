@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = await params;
 
     const person = await prisma.person.findFirst({
       where: {

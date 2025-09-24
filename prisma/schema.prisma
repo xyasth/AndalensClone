@@ -78,22 +78,23 @@
     @@index([userId])
   }
 
-  model Person {
-    id                String   @id @default(cuid())
-    name              String   // Generated name like "Person 1"
-    eventId           String
-    event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-    clusterId         String  
-    photoCount        Int      @default(0)
-    thumbnailPath     String?
-    averageConfidence Float    @default(0.0)
-    createdAt         DateTime @default(now())
-    updatedAt         DateTime @updatedAt
-    
-    faces             Face[]
+model Person {
+  id                String   @id @default(cuid())
+  name              String   // Generated name like "Person 1"
+  eventId           String
+  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  clusterId         String  
+  photoCount        Int      @default(0)
+  thumbnailPath     String?
+  averageConfidence Float    @default(0.0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  faces             Face[]
 
-    @@index([eventId])
-  }
+  @@index([eventId])
+  @@unique([eventId, clusterId])  // Add this line
+}
 
   model Photo {
     id           String      @id @default(cuid())

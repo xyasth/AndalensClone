@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User, Loader2, AlertCircle } from "lucide-react";
 import { Event, Person, Photo } from "@/types";
+import PersonCard from '@/components/PersonCard'; // adjust path
 
 export default function AlbumDetail() {
     const { id } = useParams();
@@ -36,9 +37,9 @@ export default function AlbumDetail() {
         try {
             setLoading(true);
             setError('');
-            
+
             console.log('🔍 Fetching album data for ID:', id);
-            
+
             // Fetch album details - REMOVED Authorization header
             const albumResponse = await fetch(`/api/events/${id}`);
 
@@ -78,7 +79,7 @@ export default function AlbumDetail() {
     const fetchPersonsForAlbum = async (albumId: string) => {
         try {
             console.log('👥 Fetching persons for album:', albumId);
-            
+
             // REMOVED Authorization header - uses getServerSession
             const personsResponse = await fetch(`/api/events/${albumId}/persons`);
 
@@ -97,7 +98,7 @@ export default function AlbumDetail() {
     const fetchPhotosForAlbum = async (albumId: string) => {
         try {
             console.log('📸 Fetching photos for album:', albumId);
-            
+
             // REMOVED Authorization header - uses getServerSession
             const photosResponse = await fetch(`/api/events/${albumId}/photos`);
 
@@ -142,7 +143,7 @@ export default function AlbumDetail() {
                     description: editForm.description
                 });
             }
-            
+
             setActiveTab('people');
         } catch (error) {
             console.error("Failed to update album:", error);
@@ -240,31 +241,28 @@ export default function AlbumDetail() {
                     <div className="flex space-x-8">
                         <button
                             onClick={() => setActiveTab('people')}
-                            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                                activeTab === 'people'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
+                            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'people'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                }`}
                         >
                             People ({persons.length})
                         </button>
                         <button
                             onClick={() => setActiveTab('photos')}
-                            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                                activeTab === 'photos'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
+                            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'photos'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                }`}
                         >
                             All Photos ({photos.length})
                         </button>
                         <button
                             onClick={() => setActiveTab('edit')}
-                            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                                activeTab === 'edit'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
+                            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'edit'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                }`}
                         >
                             <Edit className="w-4 h-4 inline mr-1" />
                             Edit Album
@@ -310,46 +308,11 @@ export default function AlbumDetail() {
                             ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                                     {persons.map((person) => (
-                                        <Link
+                                        <PersonCard
                                             key={person.id}
-                                            href={`/dashboard/${album.id}/persons/${person.id}`}
-                                            className="group bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
-                                        >
-                                            <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden">
-                                                {person.thumbnailPath ? (
-                                                    <img
-                                                        src={person.thumbnailPath}
-                                                        alt={person.name}
-                                                        className="w-full h-full object-cover"
-                                                        onError={(e) => {
-                                                            // Fallback to avatar if thumbnail fails to load
-                                                            const target = e.target as HTMLImageElement;
-                                                            target.style.display = 'none';
-                                                            target.parentElement!.innerHTML = `
-                                                                <div class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                                                                    <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                                                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
-                                                                    </svg>
-                                                                </div>
-                                                            `;
-                                                        }}
-                                                    />
-                                                ) : (
-                                                    <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                                                        <User className="w-8 h-8 text-white" />
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <h3 className="font-medium text-gray-900 text-sm mb-1 group-hover:text-blue-600">
-                                                {person.name}
-                                            </h3>
-                                            <p className="text-xs text-gray-500">
-                                                {person.photoCount} photos
-                                            </p>
-                                            <p className="text-xs text-gray-500">
-                                                {Math.round(person.averageConfidence * 100)}% confidence
-                                            </p>
-                                        </Link>
+                                            person={person}
+                                            onClick={() => router.push(`/dashboard/${album.id}/persons/${person.id}`)}
+                                        />
                                     ))}
                                 </div>
                             )}
@@ -400,7 +363,7 @@ export default function AlbumDetail() {
                                                     }}
                                                 />
                                             </div>
-                                            
+
                                             <div className="absolute inset-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
                                                 <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <p className="text-xs font-medium truncate">{photo.originalName}</p>
@@ -410,21 +373,19 @@ export default function AlbumDetail() {
                                                     </p>
                                                 </div>
                                             </div>
-                                            
+
                                             <div className="absolute top-2 right-2">
-                                                <div className={`w-3 h-3 rounded-full ${
-                                                    photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
-                                                }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
+                                                <div className={`w-3 h-3 rounded-full ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
+                                                    }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
                                             </div>
 
                                             <div className="absolute top-2 left-2">
-                                                <div className={`text-xs px-2 py-1 rounded ${
-                                                    photo.status === 'completed' 
-                                                        ? 'bg-green-100 text-green-800' 
-                                                        : photo.status === 'processing'
+                                                <div className={`text-xs px-2 py-1 rounded ${photo.status === 'completed'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : photo.status === 'processing'
                                                         ? 'bg-yellow-100 text-yellow-800'
                                                         : 'bg-red-100 text-red-800'
-                                                }`}>
+                                                    }`}>
                                                     {photo.status}
                                                 </div>
                                             </div>
@@ -441,7 +402,7 @@ export default function AlbumDetail() {
                     <div className="space-y-6">
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <h2 className="text-2xl font-semibold text-gray-900 mb-6">Edit Album</h2>
-                            
+
                             <form onSubmit={handleEditSubmit} className="space-y-6">
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">

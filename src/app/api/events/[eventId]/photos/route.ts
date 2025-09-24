@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { eventId } = params;
+    const { eventId } = await params;
 
     const event = await prisma.event.findFirst({
       where: {

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { PrismaClient } from '@prisma/client';
+import sharp from 'sharp';
 
 const prisma = new PrismaClient();
 
@@ -17,7 +18,6 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // FIX: Await params in Next.js 15
     const params = await context.params;
     const { photoId } = params;
     
@@ -26,8 +26,9 @@ export async function GET(
     const y = parseInt(searchParams.get('y') || '0');
     const w = parseInt(searchParams.get('w') || '100');
     const h = parseInt(searchParams.get('h') || '100');
+    const size = parseInt(searchParams.get('size') || '200'); // Output size
 
-    console.log('🖼️ Serving thumbnail for photo:', photoId, `Crop: ${x},${y},${w}x${h}`);
+    console.log('🖼️ Serving cropped thumbnail for photo:', photoId, `Crop: ${x},${y},${w}x${h} -> ${size}x${size}`);
 
     // Find the photo and verify user access
     const photo = await prisma.photo.findFirst({
@@ -46,7 +47,7 @@ export async function GET(
       return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     }
 
-    // If photo is from Google Drive, get thumbnail
+    // If photo is from Google Drive, get and crop it
     if (photo.driveFileId) {
       const accessToken = (session as any).accessToken;
       
@@ -70,24 +71,36 @@ export async function GET(
         return NextResponse.json({ error: 'Failed to fetch from Google Drive' }, { status: 404 });
       }
 
-      // For now, return the full image with crop parameters
-      // In production, you'd want to implement actual image cropping using Sharp or Canvas
       const imageBuffer = await driveResponse.arrayBuffer();
       
-      const extension = photo.originalName.split('.').pop()?.toLowerCase();
-      const contentType = extension === 'png' ? 'image/png' : 
-                         extension === 'gif' ? 'image/gif' : 
-                         extension === 'webp' ? 'image/webp' : 'image/jpeg';
+      try {
+        // Crop and resize the image using Sharp
+        const croppedBuffer = await sharp(Buffer.from(imageBuffer))
+          .extract({ 
+            left: Math.max(0, x), 
+            top: Math.max(0, y), 
+            width: w, 
+            height: h 
+          })
+          .resize(size, size, { 
+            fit: 'cover',
+            position: 'center'
+          })
+          .jpeg({ quality: 85 })
+          .toBuffer();
 
-      console.log('✅ Serving thumbnail successfully:', photo.originalName);
+        console.log('✅ Serving cropped thumbnail successfully:', photo.originalName);
 
-      return new Response(imageBuffer, {
-        headers: {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=86400',
-          'X-Crop-Info': JSON.stringify({ x, y, w, h }),
-        },
-      });
+        return new Response(croppedBuffer, {
+          headers: {
+            'Content-Type': 'image/jpeg',
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      } catch (sharpError) {
+        console.error('❌ Sharp processing error:', sharpError);
+        return NextResponse.json({ error: 'Image processing failed' }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ error: 'Local file serving not implemented' }, { status: 501 });

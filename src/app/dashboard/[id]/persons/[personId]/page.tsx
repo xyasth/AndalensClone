@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, User, Image as ImageIcon, Tag, Loader2, AlertCircle, Edit } from 'lucide-react';
 import { Person, Photo, Event } from '@/types';
+import PhotoWithFaceOverlay from '@/components/PhotoWithFaceOverlay'; // Adjust the import path as needed
 
 export default function AlbumPersonDetailPage() {
   const params = useParams();
   const router = useRouter();
   const albumId = params.id as string;
   const personId = params.personId as string;
-  
+
   const [album, setAlbum] = useState<Event | null>(null);
   const [person, setPerson] = useState<Person | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -28,7 +29,7 @@ export default function AlbumPersonDetailPage() {
     try {
       setLoading(true);
       setError('');
-      
+
       console.log('🔍 Fetching person data for:', { albumId, personId });
 
       // Fetch album, person, and person's photos in parallel
@@ -41,7 +42,7 @@ export default function AlbumPersonDetailPage() {
       if (!albumRes.ok) {
         throw new Error(`Album fetch failed: ${albumRes.status}`);
       }
-      
+
       if (!personRes.ok) {
         if (personRes.status === 404) {
           setError('Person not found');
@@ -52,7 +53,7 @@ export default function AlbumPersonDetailPage() {
 
       const albumData = await albumRes.json();
       const personData = await personRes.json();
-      
+
       console.log('✅ Album and person data fetched successfully');
       setAlbum(albumData);
       setPerson(personData);
@@ -95,7 +96,7 @@ export default function AlbumPersonDetailPage() {
       if (person) {
         setPerson({ ...person, name: newName.trim() });
       }
-      
+
       setEditingName(false);
     } catch (error) {
       console.error('Failed to update person name:', error);
@@ -219,7 +220,7 @@ export default function AlbumPersonDetailPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-6 text-sm text-gray-500">
               <div className="flex items-center">
                 <ImageIcon className="w-4 h-4 mr-2" />
@@ -254,70 +255,15 @@ export default function AlbumPersonDetailPage() {
           </div>
         ) : (
           <>
-            {/* Photos Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {photos.map((photo) => {
-                // Find the face data for this person in this photo
-                const personFace = photo.faces.find(face => face.cluster_id === person.cluster_id);
-                
-                return (
-                  <div key={photo.id} className="group relative">
-                    <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:shadow-md transition-shadow">
-                      <img
-                        src={`/api/photos/${photo.id}`}
-                        alt={photo.originalName}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.parentElement!.innerHTML = `
-                            <div class="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
-                              <svg class="w-8 h-8 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
-                              </svg>
-                            </div>
-                          `;
-                        }}
-                      />
-                      
-                      {personFace && (
-                        <div 
-                          className="absolute border-2  pointer-events-none"
-                          style={{
-                            left: `${(personFace.facial_area.x / 1000) * 100}%`,
-                            top: `${(personFace.facial_area.y / 1000) * 100}%`,
-                            width: `${(personFace.facial_area.w / 1000) * 100}%`,
-                            height: `${(personFace.facial_area.h / 1000) * 100}%`,
-                            minWidth: '20px',
-                            minHeight: '20px'
-                          }}
-                        />
-                      )}
-                    </div>
-                    
-                    {/* Photo info overlay */}
-                    <div className="absolute inset-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
-                      <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                        <p className="text-xs font-medium truncate">{photo.originalName}</p>
-                        <p className="text-xs opacity-75">
-                          {new Date(photo.uploadedAt).toLocaleDateString()}
-                        </p>
-                        {personFace && (
-                          <p className="text-xs opacity-75">
-                            Confidence: {Math.round(personFace.face_confidence * 100)}%
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="absolute top-2 right-2">
-                      <div className={`w-3 h-3 rounded-full ${
-                        photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
-                      }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Photos Masonry Grid */}
+            <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4">
+              {photos.map((photo) => (
+                <PhotoWithFaceOverlay
+                  key={photo.id}
+                  photo={photo}
+                  person={person}
+                />
+              ))}
             </div>
 
             {/* Statistics */}
