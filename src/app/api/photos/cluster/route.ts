@@ -9,7 +9,7 @@ declare global {
 const prisma = global.prisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://e2c6ed78a72e.ngrok-free.app/extract';
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://d675a73c76f4.ngrok-free.app/extract';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +26,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request format' }, { status: 400 });
     }
 
-    // Verify user owns all albums
     for (const album of body.albums) {
       const albumId = String(album.album_id);
       const event = await prisma.event.findFirst({

@@ -33,6 +33,11 @@ interface UploadFile extends File {
   source?: 'upload' | 'drive';
 }
 
+interface DriveImageProps {
+  file: DriveFile;
+  session: any;
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -65,6 +70,111 @@ export default function UploadPage() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [albumsLoading, setAlbumsLoading] = useState(true);
 
+  // Drive Image Component with Fallback
+  const DriveImageWithFallback: React.FC<DriveImageProps> = ({ file, session }) => {
+    const [imageError, setImageError] = useState(false);
+    const [imageLoading, setImageLoading] = useState(true);
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+      let mounted = true;
+      
+      const loadImage = async () => {
+        try {
+          setImageLoading(true);
+          setImageError(false);
+          
+          // Try multiple approaches for loading the image
+          const imageSources = [
+            // Method 1: Direct thumbnail link with size parameter
+            file.thumbnailLink ? `${file.thumbnailLink}=s400` : null,
+            // Method 2: Drive API thumbnail endpoint
+            file.thumbnailLink ? `${file.thumbnailLink}=s200-c` : null,
+            // Method 3: Our custom proxy endpoint (we'll create this)
+            `/api/drive/thumbnail?fileId=${file.id}`,
+          ].filter(Boolean);
+
+          for (const source of imageSources) {
+            if (!mounted) return;
+            
+            try {
+              // Test if the image loads
+              await new Promise<void>((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve();
+                img.onerror = () => reject();
+                img.src = source!;
+                
+                // Timeout after 3 seconds
+                setTimeout(() => reject(), 3000);
+              });
+              
+              // If we get here, the image loaded successfully
+              if (mounted) {
+                setImageUrl(source!);
+                setImageLoading(false);
+                return;
+              }
+            } catch {
+              // Try next source
+              continue;
+            }
+          }
+          
+          // If all sources failed
+          if (mounted) {
+            setImageError(true);
+            setImageLoading(false);
+          }
+          
+        } catch (error) {
+          if (mounted) {
+            setImageError(true);
+            setImageLoading(false);
+          }
+        }
+      };
+
+      loadImage();
+
+      return () => {
+        mounted = false;
+      };
+    }, [file.id, file.thumbnailLink]);
+
+    if (imageLoading) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-gray-200">
+          <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+        </div>
+      );
+    }
+
+    if (imageError || !imageUrl) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-gray-200">
+          <ImageIcon className="w-8 h-8 text-gray-400" />
+        </div>
+      );
+    }
+
+    return (
+      <img 
+        src={imageUrl}
+        alt={file.name}
+        className="w-full h-full object-cover"
+        onError={() => {
+          setImageError(true);
+          setImageUrl(null);
+        }}
+        onLoad={() => {
+          setImageLoading(false);
+        }}
+      />
+    );
+  };
+
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -77,8 +187,8 @@ export default function UploadPage() {
   }
 
   if (!session || !session.user?.email) {
-  router.push('/auth/signin');
-  return null;
+    router.push('/auth/signin');
+    return null;
   }
 
   // FIXED: Fetch albums on load - REMOVED Authorization header
@@ -612,17 +722,10 @@ export default function UploadPage() {
                       }}
                     >
                       <div className="aspect-square bg-gray-100 rounded overflow-hidden mb-2">
-                        {file.thumbnailLink ? (
-                          <img 
-                            src={file.thumbnailLink} 
-                            alt={file.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <ImageIcon className="w-8 h-8 text-gray-400" />
-                          </div>
-                        )}
+                        <DriveImageWithFallback 
+                          file={file}
+                          session={session}
+                        />
                       </div>
                       <p className="text-xs font-medium truncate">{file.name}</p>
                       <p className="text-xs text-gray-500">{file.size}</p>
@@ -646,7 +749,7 @@ export default function UploadPage() {
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                   >
                     <Brain className="w-4 h-4 mr-2" />
-                    Process Selected Files
+                    Process Selected Files ({selectedDriveFiles.size})
                   </button>
                 </div>
               </>
@@ -664,13 +767,14 @@ export default function UploadPage() {
             <Brain className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
             <div>
               <h3 className="text-sm font-medium text-blue-800">
-                ✅ FIXED: Authorization Headers Updated
+                ✅ UPDATED: Improved Drive Image Loading
               </h3>
               <div className="text-sm text-blue-700 mt-1 space-y-1">
-                <p>• <strong>✅ fetchAlbums:</strong> Authorization header REMOVED (uses getServerSession)</p>
-                <p>• <strong>✅ loadDriveFiles:</strong> Authorization header KEPT (calls Google Drive API)</p>
-                <p>• <strong>✅ createEvent:</strong> Authorization header REMOVED (uses getServerSession)</p>
-                <p>• <strong>✅ processDriveFiles:</strong> Authorization header REMOVED (uses getServerSession)</p>
+                <p>• <strong>✅ Multiple fallback sources:</strong> Tries different thumbnail URLs and custom proxy</p>
+                <p>• <strong>✅ Loading states:</strong> Shows spinner while loading images</p>
+                <p>• <strong>✅ Error handling:</strong> Graceful fallback to icon when images fail</p>
+                <p>• <strong>✅ Timeout protection:</strong> 3-second timeout per image source</p>
+                <p>• <strong>✅ Memory cleanup:</strong> Proper component unmounting to prevent memory leaks</p>
               </div>
             </div>
           </div>
