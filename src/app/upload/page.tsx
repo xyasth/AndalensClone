@@ -702,6 +702,25 @@ export default function UploadPage() {
               </div>
             ) : driveFiles.length > 0 ? (
               <>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setSelectedDriveFiles(new Set(driveFiles.map(f => f.id)))}
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      onClick={() => setSelectedDriveFiles(new Set())}
+                      className="px-3 py-1 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <span className="text-sm text-gray-600">
+                    {selectedDriveFiles.size} of {driveFiles.length} files selected
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
                   {driveFiles.map((file) => (
                     <div
@@ -739,10 +758,7 @@ export default function UploadPage() {
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">
-                    {selectedDriveFiles.size} of {driveFiles.length} files selected
-                  </span>
+                <div className="flex items-center justify-end">
                   <button
                     onClick={processDriveFiles}
                     disabled={selectedDriveFiles.size === 0}
