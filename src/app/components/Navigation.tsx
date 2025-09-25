@@ -22,7 +22,6 @@ const Navigation = () => {
     { href: '/', label: 'Home', icon: Home, public: true },
     { href: '/dashboard', label: 'Dashboard', icon: FolderOpen, protected: true },
     { href: '/upload', label: 'Upload', icon: Upload, protected: true },
-    { href: '/clustering', label: 'AI Monitor', icon: Brain, protected: true },
   ];
 
   // Hide navigation on auth pages

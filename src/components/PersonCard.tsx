@@ -39,7 +39,7 @@ const ProperFaceCrop = ({ person, className = '' }: ProperFaceCropProps) => {
       const url = new URL(person.thumbnailPath, window.location.origin);
       const pathParts = url.pathname.split('/');
       const photoId = pathParts[3];
-      
+
       const x = parseInt(url.searchParams.get('x') || '0');
       const y = parseInt(url.searchParams.get('y') || '0');
       const w = parseInt(url.searchParams.get('w') || '100');
@@ -53,13 +53,13 @@ const ProperFaceCrop = ({ person, className = '' }: ProperFaceCropProps) => {
 
       img.onload = () => {
         try {
-          console.log('🖼️ Image loaded successfully for', person.name, 
+          console.log('🖼️ Image loaded successfully for', person.name,
             'Size:', img.naturalWidth, 'x', img.naturalHeight);
 
           // Create a new canvas element directly (don't rely on ref)
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
-          
+
           if (!ctx) {
             console.error('❌ Canvas context not available for', person.name);
             setError(true);
@@ -83,8 +83,8 @@ const ProperFaceCrop = ({ person, className = '' }: ProperFaceCropProps) => {
           const cropW = Math.min(img.naturalWidth - cropX, w + padding * 2);
           const cropH = Math.min(img.naturalHeight - cropY, h + padding * 2);
 
-          console.log('✂️ Cropping for', person.name, ':', { 
-            original: { x, y, w, h }, 
+          console.log('✂️ Cropping for', person.name, ':', {
+            original: { x, y, w, h },
             withPadding: { cropX, cropY, cropW, cropH },
             imageSize: { width: img.naturalWidth, height: img.naturalHeight }
           });
@@ -166,15 +166,17 @@ const PersonCard = ({ person, onClick }: PersonCardProps) => {
       className="group bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-all duration-200 cursor-pointer hover:border-blue-300"
     >
       <div className="mb-3 flex justify-center">
-        <ProperFaceCrop 
-          person={person} 
-          className="w-20 h-20" 
+        <ProperFaceCrop
+          person={person}
+          className="w-20 h-20"
         />
       </div>
 
       <div className="text-center">
         <h3 className="font-medium text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
-          {person.name}
+          {person.name.startsWith("Person")
+            ? `Person ${parseInt(person.name.replace("Person ", "")) + 1}`
+            : person.name}
         </h3>
         <p className="text-xs text-gray-500">
           {person.photoCount} photos
@@ -183,6 +185,7 @@ const PersonCard = ({ person, onClick }: PersonCardProps) => {
           {Math.round(person.averageConfidence * 100)}% confidence
         </p>
       </div>
+
     </div>
   );
 };

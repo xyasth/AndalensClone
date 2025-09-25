@@ -106,13 +106,6 @@ export default function Dashboard() {
                                 )}
                             </p>
                         </div>
-                        <Link
-                            href="/dashboard/add"
-                            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Add New Album
-                        </Link>
                     </div>
                 </div>
             </div>
@@ -120,13 +113,6 @@ export default function Dashboard() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Add album button */}
-                    <Link href="/dashboard/add">
-                        <div className="border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center p-6 hover:bg-gray-50 hover:border-gray-400 cursor-pointer transition-colors min-h-[200px]">
-                            <Plus className="w-12 h-12 text-gray-400 mb-3" />
-                            <p className="text-gray-600 font-medium">Add New Album</p>
-                            <p className="text-sm text-gray-500 mt-1">Create a new photo event</p>
-                        </div>
-                    </Link>
 
                     {/* Album cards */}
                     {events.map((album) => (

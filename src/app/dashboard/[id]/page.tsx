@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User, Loader2, AlertCircle } from "lucide-react";
@@ -14,6 +14,7 @@ export default function AlbumDetail() {
     const { data: session, status } = useSession();
     const [album, setAlbum] = useState<Event | null>(null);
     const [persons, setPersons] = useState<Person[]>([]);
+    const [sortBy, setSortBy] = useState<'alphabetical' | 'photoCount' | 'confidence' | 'numerical'>('numerical');
     const [photos, setPhotos] = useState<Photo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
@@ -24,6 +25,36 @@ export default function AlbumDetail() {
         title: "",
         description: "",
     });
+    const sortedPersons = useMemo(() => {
+        // First filter out the centroid person (cluster_id === '-1' or cluster_id === -1)
+        const filteredPersons = persons.filter(person =>
+            person.cluster_id !== '-1' && person.cluster_id !== -1
+        );
+
+        // Then sort the filtered persons
+        const sorted = [...filteredPersons];
+
+        switch (sortBy) {
+            case 'numerical':
+                // For names like "Person 1", "Person 2", etc., sort by cluster_id numerically
+                return sorted.sort((a, b) => {
+                    // If both are default "Person X" names, sort by cluster_id numerically
+                    if (a.name.startsWith('Person ') && b.name.startsWith('Person ')) {
+                        const aNum = parseInt(a.cluster_id);
+                        const bNum = parseInt(b.cluster_id);
+                        return aNum - bNum;
+                    }
+                    // Otherwise, sort alphabetically
+                    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+                });
+            case 'photoCount':
+                return sorted.sort((a, b) => b.photoCount - a.photoCount);
+            case 'confidence':
+                return sorted.sort((a, b) => b.averageConfidence - a.averageConfidence);
+            default:
+                return sorted;
+        }
+    }, [persons, sortBy]);
 
     useEffect(() => {
         if (status === 'authenticated') {
@@ -149,6 +180,81 @@ export default function AlbumDetail() {
             console.error("Failed to update album:", error);
             alert("Failed to update album");
         }
+    };
+
+    const PinterestPhotoCard = ({ photo }: { photo: Photo }) => {
+        const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+
+        const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+            const img = e.target as HTMLImageElement;
+            setImageDimensions({
+                width: img.naturalWidth,
+                height: img.naturalHeight
+            });
+        };
+
+        return (
+            <div className="relative break-inside-avoid mb-4 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer bg-white">
+                <div className="relative">
+                    <img
+                        src={`/api/photos/${photo.id}`}
+                        alt={photo.originalName}
+                        className="w-full h-auto object-cover transition-transform duration-300 group-hover:scale-105"
+                        onLoad={handleImageLoad}
+                        onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.parentElement!.innerHTML = `
+                                <div class="w-full h-64 bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
+                                    <svg class="w-12 h-12 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
+                                    </svg>
+                                </div>
+                            `;
+                        }}
+                    />
+
+                    {/* Overlay gradient */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                    {/* Top badges */}
+                    <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
+                        {/* Status badge */}
+                        <div className={`text-xs px-2 py-1 rounded-full font-medium shadow-lg ${photo.status === 'completed'
+                            ? 'bg-green-500 text-white'
+                            : photo.status === 'processing'
+                                ? 'bg-yellow-500 text-white'
+                                : 'bg-red-500 text-white'
+                            }`}>
+                            {photo.status}
+                        </div>
+
+                        {/* Quality indicator */}
+                        <div
+                            className={`w-4 h-4 rounded-full shadow-lg ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
+                                }`}
+                            title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}
+                        />
+                    </div>
+
+                    {/* Bottom info overlay */}
+                    <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                        <h3 className="font-semibold text-sm mb-1 truncate">
+                            {photo.originalName}
+                        </h3>
+                        <div className="flex items-center justify-between text-xs opacity-90">
+                            <span>{photo.faces.length} faces detected</span>
+                            <span>{new Date(photo.uploadedAt).toLocaleDateString()}</span>
+                        </div>
+                        {imageDimensions && (
+                            <div className="text-xs opacity-75 mt-1">
+                                {imageDimensions.width} × {imageDimensions.height}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     if (loading) {
@@ -277,7 +383,42 @@ export default function AlbumDetail() {
                 {activeTab === 'people' && (
                     <div className="space-y-6">
                         <div>
-                            <h2 className="text-2xl font-semibold text-gray-900 mb-6">People in this album</h2>
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-semibold text-gray-900">People in this album</h2>
+
+                                {/* Sort Controls */}
+                                {persons.length > 0 && (
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setSortBy('numerical')}
+                                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${sortBy === 'numerical'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                }`}
+                                        >
+                                            Numerical
+                                        </button>
+                                        <button
+                                            onClick={() => setSortBy('photoCount')}
+                                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${sortBy === 'photoCount'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                }`}
+                                        >
+                                            Most Photos
+                                        </button>
+                                        <button
+                                            onClick={() => setSortBy('confidence')}
+                                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${sortBy === 'confidence'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                }`}
+                                        >
+                                            Best Quality
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             {persons.length === 0 ? (
                                 <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
                                     <User className="w-16 h-16 mx-auto text-gray-400 mb-4" />
@@ -307,7 +448,7 @@ export default function AlbumDetail() {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                    {persons.map((person) => (
+                                    {sortedPersons.map((person) => (
                                         <PersonCard
                                             key={person.id}
                                             person={person}
@@ -320,7 +461,7 @@ export default function AlbumDetail() {
                     </div>
                 )}
 
-                {/* Photos Tab */}
+                {/* Photos Tab - Pinterest Style */}
                 {activeTab === 'photos' && (
                     <div className="space-y-6">
                         <div>
@@ -341,55 +482,13 @@ export default function AlbumDetail() {
                                     </Link>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                /* Pinterest-style masonry layout */
+                                <div
+                                    className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4"
+                                    style={{ columnFill: 'balance' }}
+                                >
                                     {photos.map((photo) => (
-                                        <div key={photo.id} className="group relative">
-                                            <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-                                                <img
-                                                    src={`/api/photos/${photo.id}`}
-                                                    alt={photo.originalName}
-                                                    className="w-full h-full object-cover"
-                                                    onError={(e) => {
-                                                        // Fallback to placeholder if photo fails to load
-                                                        const target = e.target as HTMLImageElement;
-                                                        target.style.display = 'none';
-                                                        target.parentElement!.innerHTML = `
-                                                            <div class="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
-                                                                <svg class="w-8 h-8 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                                                    <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
-                                                                </svg>
-                                                            </div>
-                                                        `;
-                                                    }}
-                                                />
-                                            </div>
-
-                                            <div className="absolute inset-0 group-hover:bg-opacity-50 transition-all duration-200 rounded-lg flex items-end">
-                                                <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <p className="text-xs font-medium truncate">{photo.originalName}</p>
-                                                    <p className="text-xs opacity-75">{photo.faces.length} faces</p>
-                                                    <p className="text-xs opacity-75">
-                                                        {new Date(photo.uploadedAt).toLocaleDateString()}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="absolute top-2 right-2">
-                                                <div className={`w-3 h-3 rounded-full ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
-                                                    }`} title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}></div>
-                                            </div>
-
-                                            <div className="absolute top-2 left-2">
-                                                <div className={`text-xs px-2 py-1 rounded ${photo.status === 'completed'
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : photo.status === 'processing'
-                                                        ? 'bg-yellow-100 text-yellow-800'
-                                                        : 'bg-red-100 text-red-800'
-                                                    }`}>
-                                                    {photo.status}
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <PinterestPhotoCard key={photo.id} photo={photo} />
                                     ))}
                                 </div>
                             )}
