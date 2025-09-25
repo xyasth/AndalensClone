@@ -1,4 +1,27 @@
-// types/index.ts
+// types/index.ts - Updated to match new Event→Album→DriveFolder structure
+
+export interface DriveFolder {
+  id: string;
+  name: string;
+  driveLink: string;
+  driveFolderId: string;
+  photoCount: number;
+  status: 'active' | 'processing' | 'completed' | 'error';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Album {
+  id: string;
+  name: string;
+  description?: string;
+  eventId: string;
+  photoCount: number;
+  status: 'active' | 'processing' | 'completed';
+  createdAt?: string;
+  updatedAt?: string;
+  driveFolders: DriveFolder[];
+}
 
 export interface Event {
   id: string;
@@ -6,18 +29,21 @@ export interface Event {
   title: string;
   description?: string;
   createdAt: string;
-  photoCount: number;
-  personCount: number;
   status: 'active' | 'processing' | 'completed';
-  driveLink?: string;
-  driveFolderId?: string;
+  personCount: number;
+  
+  // NEW: Album-based structure
+  albums: Album[];
+  totalAlbums: number;
+  totalDriveFolders: number;
+  totalPhotos: number;
 }
 
 export interface Person {
   id: string;
   name: string;
-  eventId: string;
-  cluster_id: string;
+  eventId: string; // Changed: now belongs to Event, not Album
+  clusterId: string;
   photoCount: number;
   averageConfidence: number;
   thumbnailPath?: string;
@@ -29,6 +55,8 @@ export interface Photo {
   originalName: string;
   path: string;
   eventId: string;
+  albumId?: string; // NEW: Link to album
+  driveFolderId?: string; // NEW: Link to specific drive folder
   uploadedAt: string;
   isGoodQuality: boolean;
   qualityScore: number;
@@ -39,31 +67,25 @@ export interface Photo {
 }
 
 export interface Face {
-  foto_id: string;
-  album: {
-    id: string;
-    name: string;
-    event: { id: string; name: string };
-  };
+  id: string;
+  fotoId: string;
+  photoId: string;
+  personId?: string;
+  clusterId: string;
   embedding: number[];
-  cluster_id: string;
-  path: string;
-  facial_area: {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    left_eye?: [number, number];
-    right_eye?: [number, number];
-  };
-  face_confidence: number;
+  facialAreaX: number;
+  facialAreaY: number;
+  facialAreaW: number;
+  facialAreaH: number;
+  faceConfidence: number;
+  createdAt: string;
 }
 
-// API Types matching your friend's API
+// API Types matching your clustering API
 export interface ClusteringAPIRequest {
   albums: {
     album_id: string;
-    folder_id: string[];
+    folder_id: string[]; // Multiple folder IDs per album
   }[];
 }
 
@@ -103,11 +125,29 @@ export interface DriveFile {
   thumbnailLink?: string;
 }
 
-export interface Album {
+// User type to include events relation
+export interface User {
   id: string;
-  name: string;
-  title: string;
-  description?: string;
-  driveLink?: string;
-  driveFolderId?: string;
+  name?: string;
+  email?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  emailVerified?: Date;
+  image?: string;
+  events: Event[];
+}
+
+export interface ProcessingActivity {
+  id: string;
+  type: 'UPLOAD' | 'QUALITY_CHECK' | 'FACE_DETECTION' | 'CLUSTERING';
+  status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  eventId: string;
+  albumId?: string;
+  eventName: string;
+  albumName?: string;
+  photoName: string;
+  facesDetected?: number;
+  clustersCreated?: number;
+  timestamp: string;
+  error?: string;
 }

@@ -27,14 +27,20 @@ export async function GET(
     const photo = await prisma.photo.findFirst({
       where: {
         id: photoId,
+        album: {
         event: {
           user: {
             email: session.user.email
           }
         }
+      }
       },
       include: {
-        event: true
+        album: {
+          include: {
+            event: true
+          }
+        }
       }
     });
 

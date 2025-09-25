@@ -1,15 +1,11 @@
+// api/photos/cluster/route.ts - Fixed driveFolder.album issue
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { PrismaClient } from '@prisma/client';
 
-declare global {
-  var prisma: PrismaClient | undefined;
-}
-const prisma = global.prisma ?? new PrismaClient();
-if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
-
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://d675a73c76f4.ngrok-free.app/extract';
+const prisma = new PrismaClient();
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://a7e8083c30fd.ngrok-free.app/extract';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,25 +22,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request format' }, { status: 400 });
     }
 
-    for (const album of body.albums) {
-      const albumId = String(album.album_id);
-      const event = await prisma.event.findFirst({
+    // NEW: Validate that user owns all the albums being processed
+    for (const albumData of body.albums) {
+      const albumId = String(albumData.album_id);
+      const album = await prisma.album.findFirst({
         where: {
           id: albumId,
-          user: { email: session.user.email }
+          event: {
+            user: { email: session.user.email }
+          }
+        },
+        include: {
+          event: true,
+          driveFolders: true
         }
       });
 
-      if (!event) {
+      if (!album) {
         return NextResponse.json({
-          error: `Event ${albumId} not found or access denied`
+          error: `Album ${albumId} not found or access denied`
         }, { status: 403 });
+      }
+
+      // NEW: Validate that the folder_ids exist in this album
+      const requestedFolderIds = albumData.folder_id || [];
+      const validFolderIds = album.driveFolders.map(df => df.driveFolderId);
+      
+      for (const folderId of requestedFolderIds) {
+        if (!validFolderIds.includes(folderId)) {
+          return NextResponse.json({
+            error: `Drive folder ${folderId} not found in album ${albumId}`
+          }, { status: 400 });
+        }
       }
     }
 
     let mlResponse: any;
     try {
-      console.log('Calling REAL ML API at:', `${ML_API_BASE_URL}`);
+      console.log('Calling ML API at:', `${ML_API_BASE_URL}`);
       
       const resp = await fetch(`${ML_API_BASE_URL}`, {
         method: 'POST',
@@ -63,12 +78,12 @@ export async function POST(request: NextRequest) {
       }
 
       mlResponse = await resp.json();
-      console.log('REAL ML API response received successfully!');
+      console.log('ML API response received successfully!');
       console.log('Extracted faces:', mlResponse.extracted?.length || 0);
       console.log('Clusters found:', mlResponse.centroid?.length || 0);
       
     } catch (err) {
-      console.warn('REAL ML API call failed, using mock response as fallback. Error:', err);
+      console.warn('ML API call failed, using mock response as fallback. Error:', err);
       mlResponse = generateMockResponse(body);
     }
 
@@ -137,29 +152,20 @@ function generateMockResponse(request: any) {
   return { extracted, centroid };
 }
 
-async function getDriveFileMapping(albumId: string, session: any): Promise<Map<string, string>> {
+async function getDriveFileMapping(albumId: string, driveFolderId: string, session: any): Promise<Map<string, string>> {
   const fileMapping = new Map<string, string>();
   
   try {
-    const album = await prisma.event.findFirst({
-      where: { id: albumId }
-    });
-    
-    if (!album?.driveFolderId) {
-      console.log(`No drive folder ID found for album: ${albumId}`);
-      return fileMapping;
-    }
-
     const accessToken = session.accessToken;
     if (!accessToken) {
       console.log('No access token available');
       return fileMapping;
     }
 
-    console.log(`Fetching Drive files from folder: ${album.driveFolderId}`);
+    console.log(`Fetching Drive files from folder: ${driveFolderId}`);
 
     const response = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q='${album.driveFolderId}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/gif' or mimeType='image/webp')&fields=files(id,name)&pageSize=1000`,
+      `https://www.googleapis.com/drive/v3/files?q='${driveFolderId}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/gif' or mimeType='image/webp')&fields=files(id,name)&pageSize=1000`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -170,7 +176,7 @@ async function getDriveFileMapping(albumId: string, session: any): Promise<Map<s
 
     if (response.ok) {
       const data = await response.json();
-      console.log(`Found ${data.files.length} files in Drive folder`);
+      console.log(`Found ${data.files.length} files in Drive folder ${driveFolderId}`);
       
       for (const file of data.files) {
         fileMapping.set(file.name, file.id);
@@ -194,43 +200,77 @@ async function saveProcessingResults(mlResponse: any, session: any) {
   try {
     console.log(`Processing ${extracted.length} faces`);
 
-    // Create drive file mappings
-    const albumIds = Array.from(new Set(extracted.map((f: any) => String(f.album_id))));
-    const driveFileMappings = new Map<string, Map<string, string>>();
+    // NEW: Create drive file mappings for each album/folder combination
+    const albumFolderMap = new Map<string, Map<string, string>>();
     
-    for (const albumId of albumIds) {
-      const mapping = await getDriveFileMapping(albumId, session);
-      driveFileMappings.set(albumId, mapping);
+    // Group by album and drive folder
+    const albumDriveCombos = new Set<string>();
+    for (const face of extracted) {
+      const albumId = String(face.album_id);
+      const driveId = String(face.drive_id);
+      albumDriveCombos.add(`${albumId}:${driveId}`);
     }
 
-    // Group faces by photo
+    // Create mappings for each album/drive combination
+    for (const combo of albumDriveCombos) {
+      const [albumId, driveId] = combo.split(':');
+      const mapping = await getDriveFileMapping(albumId, driveId, session);
+      albumFolderMap.set(combo, mapping);
+    }
+
+    // Group faces by photo (now including drive folder)
     const photoMap = new Map<string, any[]>();
     for (const face of extracted) {
       const albumId = String(face.album_id);
+      const driveId = String(face.drive_id);
       const fotoId = String(face.foto_id ?? 'unknown.jpg');
-      const key = `${albumId}:${fotoId}`;
+      const key = `${albumId}:${driveId}:${fotoId}`;
       
       if (!photoMap.has(key)) photoMap.set(key, []);
       photoMap.get(key)!.push(face);
     }
 
-    // Create centroid lookup
+    // Create centroid lookup (now per event, not per album)
     const centroidMap = new Map<string, any>();
     if (Array.isArray(centroid)) {
       for (const c of centroid) {
-        const key = `${c.album_id}:${c.cluster_id}`;
-        centroidMap.set(key, c);
+        // NEW: Get eventId from album
+        const album = await prisma.album.findUnique({
+          where: { id: c.album_id },
+          select: { eventId: true }
+        });
+        
+        if (album) {
+          const key = `${album.eventId}:${c.cluster_id}`;
+          centroidMap.set(key, c);
+        }
       }
     }
 
     // Process each photo
     for (const [key, faces] of photoMap) {
-      const [albumId, fotoId] = key.split(':');
-      const photoPath = `/drive/${albumId}/${fotoId}`;
+      const [albumId, driveId, fotoId] = key.split(':');
+      const photoPath = `/drive/${albumId}/${driveId}/${fotoId}`;
 
       // Get actual Drive file ID
-      const fileMapping = driveFileMappings.get(albumId);
+      const fileMapping = albumFolderMap.get(`${albumId}:${driveId}`);
       const actualDriveFileId = fileMapping?.get(fotoId) || null;
+
+      // FIXED: Get the DriveFolder record with album included
+      const driveFolder = await prisma.driveFolder.findFirst({
+        where: {
+          driveFolderId: driveId,
+          albumId: albumId
+        },
+        include: {
+          album: true // Include the album relation
+        }
+      });
+
+      if (!driveFolder) {
+        console.warn(`Drive folder not found: ${driveId} in album ${albumId}`);
+        continue;
+      }
 
       // Create or update photo
       let photo = await prisma.photo.findFirst({ where: { path: photoPath } });
@@ -247,11 +287,14 @@ async function saveProcessingResults(mlResponse: any, session: any) {
           }
         });
       } else {
+        // FIXED: Now we can access driveFolder.album.eventId
         photo = await prisma.photo.create({
           data: {
             originalName: fotoId,
             path: photoPath,
-            eventId: albumId,
+            eventId: driveFolder.album.eventId, // Now this works!
+            albumId: albumId,
+            driveFolderId: driveFolder.id, // Link to specific drive folder record
             isGoodQuality: faces.length > 0 && faces.some(f => f.face_confidence > 0.8),
             qualityScore: faces.length > 0 ? Math.max(...faces.map(f => Number(f.face_confidence) || 0)) : 0.5,
             status: 'COMPLETED',
@@ -260,6 +303,9 @@ async function saveProcessingResults(mlResponse: any, session: any) {
           }
         });
       }
+
+      // Get eventId for person clustering (persons belong to events, not albums)
+      const eventId = driveFolder.album.eventId; // Use the included album
 
       // Process each face
       for (const face of faces) {
@@ -284,24 +330,22 @@ async function saveProcessingResults(mlResponse: any, session: any) {
         const faceConfidence = Math.min(1.0, Math.max(0.0, Number(face.face_confidence ?? 0)));
 
         // Check if this is centroid for thumbnail
-        const centroidKey = `${albumId}:${clusterIdStr}`;
+        const centroidKey = `${eventId}:${clusterIdStr}`;
         const clusterCentroid = centroidMap.get(centroidKey);
         const shouldBeThumbnail = clusterCentroid && clusterCentroid.foto_id === fotoId;
 
-        // Create or update person using the composite unique constraint
+        // NEW: Create or update person using eventId (persons belong to events)
         let person = await prisma.person.upsert({
           where: {
             eventId_clusterId: {
-              eventId: albumId,
+              eventId: eventId, // Use eventId instead of albumId
               clusterId: clusterIdStr
             }
           },
-          update: {
-            // Will be updated below
-          },
+          update: {},
           create: {
             name: `Person ${clusterIdStr}`,
-            eventId: albumId,
+            eventId: eventId, // Use eventId
             clusterId: clusterIdStr,
             photoCount: 0,
             averageConfidence: faceConfidence,
@@ -362,16 +406,62 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       }
     }
 
-    // Update album statistics
-    for (const albumId of albumIds) {
-      const photoCount = await prisma.photo.count({ where: { eventId: albumId } });
-      const personCount = await prisma.person.count({ where: { eventId: albumId } });
+    // NEW: Update statistics for albums, drive folders, and events
+    const processedAlbums = new Set<string>();
+    const processedEvents = new Set<string>();
+    
+    for (const face of extracted) {
+      const albumId = String(face.album_id);
+      const driveId = String(face.drive_id);
+      processedAlbums.add(albumId);
+      
+      // Update drive folder stats
+      const driveFolder = await prisma.driveFolder.findFirst({
+        where: {
+          driveFolderId: driveId,
+          albumId: albumId
+        }
+      });
+      
+      if (driveFolder) {
+        const photoCount = await prisma.photo.count({ 
+          where: { driveFolderId: driveFolder.id } 
+        });
+        
+        await prisma.driveFolder.update({
+          where: { id: driveFolder.id },
+          data: { 
+            photoCount,
+            status: 'COMPLETED'
+          }
+        });
+      }
+    }
 
-      await prisma.event.update({
+    // Update album statistics
+    for (const albumId of processedAlbums) {
+      const photoCount = await prisma.photo.count({ where: { albumId } });
+      
+      const album = await prisma.album.update({
         where: { id: albumId },
         data: {
           photoCount,
-          personCount,
+          status: 'COMPLETED'
+        },
+        include: { event: true }
+      });
+      
+      processedEvents.add(album.event.id);
+    }
+
+    // Update event statistics
+    for (const eventId of processedEvents) {
+      const photoCount = await prisma.photo.count({ where: { eventId } });
+      const personCount = await prisma.person.count({ where: { eventId } });
+
+      await prisma.event.update({
+        where: { id: eventId },
+        data: {
           status: 'COMPLETED'
         }
       });
@@ -381,7 +471,9 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       success: true, 
       processed: extracted.length,
       photos: photoMap.size,
-      clusters: centroid?.length || 0
+      clusters: centroid?.length || 0,
+      albums: processedAlbums.size,
+      events: processedEvents.size
     };
   } catch (err) {
     console.error('Failed to save processing results:', err);

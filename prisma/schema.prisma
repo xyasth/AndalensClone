@@ -1,87 +1,126 @@
-  generator client {
-    provider = "prisma-client-js"
-  }
+generator client {
+  provider = "prisma-client-js"
+}
 
-  datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
-  }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
-  // NextAuth.js Models
-  model Account {
-    id                String  @id @default(cuid())
-    userId            String
-    type              String
-    provider          String
-    providerAccountId String
-    refresh_token     String? @db.Text
-    access_token      String? @db.Text
-    expires_at        Int?
-    token_type        String?
-    scope             String?
-    id_token          String? @db.Text
-    session_state     String?
+// NextAuth.js Models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([provider, providerAccountId])
-  }
+  @@unique([provider, providerAccountId])
+}
 
-  model Session {
-    id           String   @id @default(cuid())
-    sessionToken String   @unique
-    userId       String
-    expires      DateTime
-    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  }
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 
-  model User {
-    id            String    @id @default(cuid())
-    name          String?
-    email         String?   @unique
-    emailVerified DateTime?
-    image         String?
-    accounts      Account[]
-    sessions      Session[]
-    events        Event[]
-    createdAt     DateTime  @default(now())
-    updatedAt     DateTime  @updatedAt
-  }
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  events        Event[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
 
-  model VerificationToken {
-    identifier String
-    token      String   @unique
-    expires    DateTime
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
 
-    @@unique([identifier, token])
-  }
+  @@unique([identifier, token])
+}
 
-  // Your Application Models
-  model Event {
-    id          String   @id @default(cuid())
-    name        String
-    title       String
-    description String?
-    userId      String
-    user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    photoCount  Int      @default(0)
-    personCount Int      @default(0)
-    status      EventStatus @default(ACTIVE)
-    driveLink   String?  // Google Drive folder link
-    driveFolderId String? // Extracted Drive folder ID
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
-    
-    photos      Photo[]
-    persons     Person[]
+// Your Application Models - UPDATED STRUCTURE
+model Event {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Wedding Event"
+  title       String   // e.g., "Joren's Wedding"
+  description String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      EventStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // NEW: Remove direct drive links from Event
+  // driveLink   String?  // REMOVED
+  // driveFolderId String? // REMOVED
+  
+  // NEW: One event has many albums
+  albums      Album[]
+  persons     Person[]  // Persons belong to event (across all albums)
 
-    @@index([userId])
-  }
+  @@index([userId])
+}
+
+// NEW: Album model - intermediary between Event and Drive folders
+model Album {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Ceremony", "Reception", "Pre-wedding"
+  description String?
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  photoCount  Int      @default(0)
+  status      AlbumStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // One album has many drive folders
+  driveFolders DriveFolder[]
+  photos      Photo[]
+
+  @@index([eventId])
+}
+
+// NEW: DriveFolder model - stores Google Drive folder references
+model DriveFolder {
+  id          String   @id @default(cuid())
+  name        String   // Folder name from Google Drive
+  driveLink   String   // Full Google Drive folder URL
+  driveFolderId String // Extracted Drive folder ID
+  albumId     String
+  album       Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  photoCount  Int      @default(0)
+  status      DriveFolderStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  photos      Photo[]
+
+  @@index([albumId])
+  @@unique([driveFolderId, albumId]) // Prevent duplicate folders in same album
+}
 
 model Person {
   id                String   @id @default(cuid())
   name              String   // Generated name like "Person 1"
-  eventId           String
+  eventId           String   // NEW: Persons belong to event (not album)
   event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   clusterId         String  
   photoCount        Int      @default(0)
@@ -93,84 +132,112 @@ model Person {
   faces             Face[]
 
   @@index([eventId])
-  @@unique([eventId, clusterId])  // Add this line
+  @@unique([eventId, clusterId])  // Unique cluster per event
 }
 
-  model Photo {
-    id           String      @id @default(cuid())
-    originalName String
-    path         String      @unique
-    eventId      String
-    event        Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
-    uploadedAt   DateTime    @default(now())
-    isGoodQuality Boolean    @default(false)
-    qualityScore Float       @default(0.0)
-    processedAt  DateTime?
-    status       PhotoStatus @default(PROCESSING)
-    driveFileId  String?     // Google Drive file ID
-    
-    faces        Face[]
+model Photo {
+  id           String      @id @default(cuid())
+  originalName String
+  path         String      @unique
+  
+  // NEW: Photos can belong to both Album and specific DriveFolder
+  albumId      String?     // NEW: Link to album
+  album        Album?      @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  
+  driveFolderId String?    // NEW: Link to specific drive folder
+  driveFolder   DriveFolder? @relation(fields: [driveFolderId], references: [id], onDelete: SetNull)
+  
+  // Keep eventId for backwards compatibility and easier querying
+  eventId      String
+  uploadedAt   DateTime    @default(now())
+  isGoodQuality Boolean    @default(false)
+  qualityScore Float       @default(0.0)
+  processedAt  DateTime?
+  status       PhotoStatus @default(PROCESSING)
+  driveFileId  String?     // Google Drive file ID
+  
+  faces        Face[]
 
-    @@index([eventId])
-  }
+  @@index([albumId])
+  @@index([driveFolderId])
+  @@index([eventId])
+}
 
-  model Face {
-    id              String  @id @default(cuid())
-    fotoId          String  @unique // foto_id from your ML API
-    photoId         String
-    photo           Photo   @relation(fields: [photoId], references: [id], onDelete: Cascade)
-    personId        String?
-    person          Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
-    clusterId       String  // cluster_id from ChromaDB
-    embedding       Float[] // ChromaDB embedding vector
-    facialAreaX     Int
-    facialAreaY     Int
-    facialAreaW     Int
-    facialAreaH     Int
-    faceConfidence  Float
-    createdAt       DateTime @default(now())
-    
-    @@index([photoId])
-    @@index([personId])
-    @@index([clusterId])
-  }
+model Face {
+  id              String  @id @default(cuid())
+  fotoId          String  @unique // foto_id from your ML API
+  photoId         String
+  photo           Photo   @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  personId        String?
+  person          Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+  clusterId       String  // cluster_id from ChromaDB
+  embedding       Float[] // ChromaDB embedding vector
+  facialAreaX     Int
+  facialAreaY     Int
+  facialAreaW     Int
+  facialAreaH     Int
+  faceConfidence  Float
+  createdAt       DateTime @default(now())
+  
+  @@index([photoId])
+  @@index([personId])
+  @@index([clusterId])
+}
 
-  model ProcessingActivity {
-    id            String            @id @default(cuid())
-    type          ProcessingType
-    status        ProcessingStatus
-    eventId       String
-    eventName     String
-    photoName     String
-    facesDetected Int?
-    clustersCreated Int?
-    timestamp     DateTime          @default(now())
-    error         String?
-    
-    @@index([eventId])
-  }
+model ProcessingActivity {
+  id            String            @id @default(cuid())
+  type          ProcessingType
+  status        ProcessingStatus
+  eventId       String
+  albumId       String?           // NEW: Track which album was processed
+  eventName     String
+  albumName     String?           // NEW: Album name
+  photoName     String
+  facesDetected Int?
+  clustersCreated Int?
+  timestamp     DateTime          @default(now())
+  error         String?
+  
+  @@index([eventId])
+  @@index([albumId])
+}
 
-  enum EventStatus {
-    ACTIVE
-    PROCESSING
-    COMPLETED
-  }
+enum EventStatus {
+  ACTIVE
+  PROCESSING
+  COMPLETED
+}
 
-  enum PhotoStatus {
-    PROCESSING
-    COMPLETED
-    FAILED
-  }
+// NEW: Album status
+enum AlbumStatus {
+  ACTIVE
+  PROCESSING
+  COMPLETED
+}
 
-  enum ProcessingType {
-    UPLOAD
-    QUALITY_CHECK
-    FACE_DETECTION
-    CLUSTERING
-  }
+// NEW: Drive folder status
+enum DriveFolderStatus {
+  ACTIVE
+  PROCESSING
+  COMPLETED
+  ERROR
+}
 
-  enum ProcessingStatus {
-    PROCESSING
-    COMPLETED
-    FAILED
-  }
+enum PhotoStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ProcessingType {
+  UPLOAD
+  QUALITY_CHECK
+  FACE_DETECTION
+  CLUSTERING
+}
+
+enum ProcessingStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}

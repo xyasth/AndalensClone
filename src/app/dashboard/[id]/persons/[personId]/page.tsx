@@ -5,15 +5,124 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, User, Image as ImageIcon, Tag, Loader2, AlertCircle, Edit } from 'lucide-react';
 import { Person, Photo, Event } from '@/types';
-import PhotoWithFaceOverlay from '@/components/PhotoWithFaceOverlay'; // Adjust the import path as needed
 
-export default function AlbumPersonDetailPage() {
+// PhotoWithFaceOverlay component - inline for completeness
+interface PhotoWithFaceOverlayProps {
+  photo: Photo;
+  person: Person;
+}
+
+const PhotoWithFaceOverlay = ({ photo, person }: PhotoWithFaceOverlayProps) => {
+  const [showOverlay, setShowOverlay] = useState(false);
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.target as HTMLImageElement;
+    setImageDimensions({
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    });
+  };
+
+  // Find faces that belong to this person
+  const personFaces = photo.faces.filter(face => face.personId === person.id);
+
+  return (
+    <div 
+      className="relative break-inside-avoid mb-4 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer bg-white"
+      onMouseEnter={() => setShowOverlay(true)}
+      onMouseLeave={() => setShowOverlay(false)}
+    >
+      <div className="relative">
+        <img
+          src={`/api/photos/${photo.id}`}
+          alt={photo.originalName}
+          className="w-full h-auto object-cover transition-transform duration-300 group-hover:scale-105"
+          onLoad={handleImageLoad}
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+            target.parentElement!.innerHTML = `
+              <div class="w-full h-64 bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
+                <svg class="w-12 h-12 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
+                </svg>
+              </div>
+            `;
+          }}
+        />
+
+        {/* Face overlay rectangles */}
+        {showOverlay && personFaces.map((face, index) => (
+          <div
+            key={index}
+            className="absolute border-2 border-blue-400 bg-blue-400/20 transition-opacity duration-300"
+            style={{
+              left: `${(face.facialAreaX / (imageDimensions?.width || 1)) * 100}%`,
+              top: `${(face.facialAreaY / (imageDimensions?.height || 1)) * 100}%`,
+              width: `${(face.facialAreaW / (imageDimensions?.width || 1)) * 100}%`,
+              height: `${(face.facialAreaH / (imageDimensions?.height || 1)) * 100}%`,
+            }}
+          >
+            <div className="absolute -top-6 left-0 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+              {Math.round(face.faceConfidence * 100)}%
+            </div>
+          </div>
+        ))}
+
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+        {/* Top badges */}
+        <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
+          <div className={`text-xs px-2 py-1 rounded-full font-medium shadow-lg ${photo.status === 'completed'
+            ? 'bg-green-500 text-white'
+            : photo.status === 'processing'
+              ? 'bg-yellow-500 text-white'
+              : 'bg-red-500 text-white'
+            }`}>
+            {photo.status}
+          </div>
+
+          <div className="flex items-center space-x-1">
+            <div
+              className={`w-4 h-4 rounded-full shadow-lg ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
+                }`}
+              title={`Quality Score: ${Math.round(photo.qualityScore * 100)}%`}
+            />
+            <div className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full shadow-lg">
+              {personFaces.length} face{personFaces.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom info overlay */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+          <h3 className="font-semibold text-sm mb-1 truncate">
+            {photo.originalName}
+          </h3>
+          <div className="flex items-center justify-between text-xs opacity-90">
+            <span>{photo.faces.length} total faces</span>
+            <span>{new Date(photo.uploadedAt).toLocaleDateString()}</span>
+          </div>
+          {imageDimensions && (
+            <div className="text-xs opacity-75 mt-1">
+              {imageDimensions.width} × {imageDimensions.height}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function PersonDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const albumId = params.id as string;
+  const eventId = params.id as string;
   const personId = params.personId as string;
 
-  const [album, setAlbum] = useState<Event | null>(null);
+  const [event, setEvent] = useState<Event | null>(null);
   const [person, setPerson] = useState<Person | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,24 +132,24 @@ export default function AlbumPersonDetailPage() {
 
   useEffect(() => {
     fetchPersonData();
-  }, [albumId, personId]);
+  }, [eventId, personId]);
 
   const fetchPersonData = async () => {
     try {
       setLoading(true);
       setError('');
 
-      console.log('🔍 Fetching person data for:', { albumId, personId });
+      console.log('Fetching person data for:', { eventId, personId });
 
-      // Fetch album, person, and person's photos in parallel
-      const [albumRes, personRes, photosRes] = await Promise.all([
-        fetch(`/api/events/${albumId}`),
+      // Fetch event, person, and person's photos in parallel
+      const [eventRes, personRes, photosRes] = await Promise.all([
+        fetch(`/api/events/${eventId}`),
         fetch(`/api/persons/${personId}`),
         fetch(`/api/persons/${personId}/photos`)
       ]);
 
-      if (!albumRes.ok) {
-        throw new Error(`Album fetch failed: ${albumRes.status}`);
+      if (!eventRes.ok) {
+        throw new Error(`Event fetch failed: ${eventRes.status}`);
       }
 
       if (!personRes.ok) {
@@ -51,17 +160,17 @@ export default function AlbumPersonDetailPage() {
         throw new Error(`Person fetch failed: ${personRes.status}`);
       }
 
-      const albumData = await albumRes.json();
+      const eventData = await eventRes.json();
       const personData = await personRes.json();
 
-      console.log('✅ Album and person data fetched successfully');
-      setAlbum(albumData);
+      console.log('Event and person data fetched successfully');
+      setEvent(eventData);
       setPerson(personData);
       setNewName(personData.name);
 
       if (photosRes.ok) {
         const photosResponse = await photosRes.json();
-        console.log('✅ Person photos fetched:', photosResponse.photos?.length || 0);
+        console.log('Person photos fetched:', photosResponse.photos?.length || 0);
         setPhotos(photosResponse.photos || []);
       } else {
         console.warn('Failed to fetch person photos:', photosRes.status);
@@ -92,7 +201,6 @@ export default function AlbumPersonDetailPage() {
         throw new Error('Failed to update person name');
       }
 
-      // Update local state
       if (person) {
         setPerson({ ...person, name: newName.trim() });
       }
@@ -121,21 +229,21 @@ export default function AlbumPersonDetailPage() {
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
-          <Link href={`/dashboard/${albumId}`} className="text-blue-600 hover:text-blue-700">
-            ← Back to album
+          <Link href={`/dashboard/${eventId}`} className="text-blue-600 hover:text-blue-700">
+            ← Back to event
           </Link>
         </div>
       </div>
     );
   }
 
-  if (!album || !person) {
+  if (!event || !person) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Person not found</h2>
-          <Link href={`/dashboard/${albumId}`} className="text-blue-600 hover:text-blue-700">
-            ← Back to album
+          <Link href={`/dashboard/${eventId}`} className="text-blue-600 hover:text-blue-700">
+            ← Back to event
           </Link>
         </div>
       </div>
@@ -150,7 +258,7 @@ export default function AlbumPersonDetailPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <Link
-                href={`/dashboard/${albumId}`}
+                href={`/dashboard/${eventId}`}
                 className="mr-4 p-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -215,8 +323,8 @@ export default function AlbumPersonDetailPage() {
                       </>
                     )}
                   </div>
-                  <p className="text-gray-600">Photos from {album.title}</p>
-                  <p className="text-sm text-gray-500">{album.name}</p>
+                  <p className="text-gray-600">Photos from {event.title}</p>
+                  <p className="text-sm text-gray-500">{event.name}</p>
                 </div>
               </div>
             </div>
@@ -228,7 +336,7 @@ export default function AlbumPersonDetailPage() {
               </div>
               <div className="flex items-center">
                 <Tag className="w-4 h-4 mr-2" />
-                Cluster {person.cluster_id}
+                Cluster {person.clusterId}
               </div>
               <div className="text-sm">
                 {Math.round(person.averageConfidence * 100)}% avg confidence
@@ -243,7 +351,7 @@ export default function AlbumPersonDetailPage() {
         <div className="mb-6">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">All photos of {person.name}</h2>
           <p className="text-gray-600">
-            These photos have been automatically grouped using AI face recognition
+            These photos have been automatically grouped using AI face recognition. Hover over photos to see face detection boxes.
           </p>
         </div>
 
@@ -288,10 +396,69 @@ export default function AlbumPersonDetailPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-orange-600">
-                    {photos.reduce((sum, photo) => sum + photo.faces.length, 0)}
+                    {photos.reduce((sum, photo) => {
+                      return sum + photo.faces.filter(face => face.personId === person.id).length;
+                    }, 0)}
                   </div>
-                  <div className="text-sm text-gray-600">Total Faces</div>
+                  <div className="text-sm text-gray-600">Face Detections</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Face Quality Distribution */}
+            <div className="mt-6 bg-white rounded-lg border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Face Detection Quality</h3>
+              <div className="space-y-2">
+                {(() => {
+                  const allFaces = photos.flatMap(photo => 
+                    photo.faces.filter(face => face.personId === person.id)
+                  );
+                  const highConfidence = allFaces.filter(face => face.faceConfidence > 0.8).length;
+                  const mediumConfidence = allFaces.filter(face => face.faceConfidence > 0.6 && face.faceConfidence <= 0.8).length;
+                  const lowConfidence = allFaces.filter(face => face.faceConfidence <= 0.6).length;
+                  const total = allFaces.length;
+                  
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">High Confidence (&gt;80%)</span>
+                        <div className="flex items-center">
+                          <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
+                            <div 
+                              className="bg-green-500 h-2 rounded-full" 
+                              style={{ width: `${total > 0 ? (highConfidence / total) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-medium text-gray-900">{highConfidence}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Medium Confidence (60-80%)</span>
+                        <div className="flex items-center">
+                          <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
+                            <div 
+                              className="bg-yellow-500 h-2 rounded-full" 
+                              style={{ width: `${total > 0 ? (mediumConfidence / total) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-medium text-gray-900">{mediumConfidence}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Low Confidence (&lt;60%)</span>
+                        <div className="flex items-center">
+                          <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
+                            <div 
+                              className="bg-red-500 h-2 rounded-full" 
+                              style={{ width: `${total > 0 ? (lowConfidence / total) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-medium text-gray-900">{lowConfidence}</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -300,11 +467,12 @@ export default function AlbumPersonDetailPage() {
               <h4 className="text-sm font-medium text-gray-800 mb-2">Debug Information</h4>
               <div className="text-xs text-gray-600 space-y-1">
                 <p><strong>Person ID:</strong> {person.id}</p>
-                <p><strong>Cluster ID:</strong> {person.cluster_id}</p>
-                <p><strong>Album ID:</strong> {albumId}</p>
+                <p><strong>Cluster ID:</strong> {person.clusterId}</p>
+                <p><strong>Event ID:</strong> {eventId}</p>
                 <p><strong>Thumbnail Path:</strong> {person.thumbnailPath || 'None'}</p>
                 <p><strong>Photos Loaded:</strong> {photos.length}</p>
-                <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces.length > 0).length}</p>
+                <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces.some(f => f.personId === person.id)).length}</p>
+                <p><strong>Total Face Detections:</strong> {photos.reduce((sum, photo) => sum + photo.faces.filter(face => face.personId === person.id).length, 0)}</p>
               </div>
             </div>
           </>

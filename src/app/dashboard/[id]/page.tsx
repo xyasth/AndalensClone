@@ -4,53 +4,103 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User, Loader2, AlertCircle, Folder, CloudDownload } from "lucide-react";
 import { Event, Person, Photo } from "@/types";
-import PersonCard from '@/components/PersonCard'; // adjust path
 
-export default function AlbumDetail() {
+// PersonCard component - inline for completeness
+interface PersonCardProps {
+  person: Person;
+  onClick: () => void;
+}
+
+const PersonCard = ({ person, onClick }: PersonCardProps) => (
+  <div
+    onClick={onClick}
+    className="group bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer"
+  >
+    <div className="text-center">
+      <div className="w-20 h-20 mx-auto mb-3 rounded-full overflow-hidden">
+        {person.thumbnailPath ? (
+          <img
+            src={person.thumbnailPath}
+            alt={person.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              target.parentElement!.innerHTML = `
+                <div class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                  <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                  </svg>
+                </div>
+              `;
+            }}
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+            <User className="w-8 h-8 text-white" />
+          </div>
+        )}
+      </div>
+      <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
+        {person.name}
+      </h3>
+      <p className="text-sm text-gray-600 mb-2">{person.photoCount} photos</p>
+      <div className="flex items-center justify-center text-xs text-gray-500">
+        <div className="flex items-center">
+          <div className={`w-2 h-2 rounded-full mr-1 ${
+            person.averageConfidence > 0.8 ? 'bg-green-400' :
+            person.averageConfidence > 0.6 ? 'bg-yellow-400' : 'bg-red-400'
+          }`} />
+          {Math.round(person.averageConfidence * 100)}% confidence
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+export default function EventDetail() {
     const { id } = useParams();
     const router = useRouter();
     const { data: session, status } = useSession();
-    const [album, setAlbum] = useState<Event | null>(null);
+    const [event, setEvent] = useState<Event | null>(null);
     const [persons, setPersons] = useState<Person[]>([]);
     const [sortBy, setSortBy] = useState<'alphabetical' | 'photoCount' | 'confidence' | 'numerical'>('numerical');
     const [photos, setPhotos] = useState<Photo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<'people' | 'photos' | 'edit'>('people');
+    const [activeTab, setActiveTab] = useState<'people' | 'albums' | 'photos' | 'edit'>('people');
 
     const [editForm, setEditForm] = useState({
         name: "",
         title: "",
         description: "",
     });
+
     const sortedPersons = useMemo(() => {
-        // First filter out the centroid person (cluster_id === '-1' or cluster_id === -1)
         const filteredPersons = persons.filter(person =>
-            person.cluster_id !== '-1' && person.cluster_id !== -1
+            String(person.clusterId) !== '-1'
         );
 
-        // Then sort the filtered persons
         const sorted = [...filteredPersons];
 
         switch (sortBy) {
             case 'numerical':
-                // For names like "Person 1", "Person 2", etc., sort by cluster_id numerically
                 return sorted.sort((a, b) => {
-                    // If both are default "Person X" names, sort by cluster_id numerically
                     if (a.name.startsWith('Person ') && b.name.startsWith('Person ')) {
-                        const aNum = parseInt(a.cluster_id);
-                        const bNum = parseInt(b.cluster_id);
+                        const aNum = parseInt(a.clusterId);
+                        const bNum = parseInt(b.clusterId);
                         return aNum - bNum;
                     }
-                    // Otherwise, sort alphabetically
                     return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
                 });
             case 'photoCount':
                 return sorted.sort((a, b) => b.photoCount - a.photoCount);
             case 'confidence':
                 return sorted.sort((a, b) => b.averageConfidence - a.averageConfidence);
+            case 'alphabetical':
+                return sorted.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
             default:
                 return sorted;
         }
@@ -58,65 +108,64 @@ export default function AlbumDetail() {
 
     useEffect(() => {
         if (status === 'authenticated') {
-            fetchAlbumData();
+            fetchEventData();
         } else if (status === 'unauthenticated') {
             router.push('/auth/signin');
         }
     }, [id, status, router]);
 
-    const fetchAlbumData = async () => {
+    const fetchEventData = async () => {
         try {
             setLoading(true);
             setError('');
 
-            console.log('🔍 Fetching album data for ID:', id);
+            console.log('Fetching event data for ID:', id);
 
-            // Fetch album details - REMOVED Authorization header
-            const albumResponse = await fetch(`/api/events/${id}`);
+            // Fetch event details
+            const eventResponse = await fetch(`/api/events/${id}`);
 
-            if (!albumResponse.ok) {
-                if (albumResponse.status === 404) {
-                    setError('Album not found');
+            if (!eventResponse.ok) {
+                if (eventResponse.status === 404) {
+                    setError('Event not found');
                     return;
                 }
-                const errorText = await albumResponse.text();
-                console.error('Album fetch error:', errorText);
-                throw new Error(`Failed to fetch album: ${albumResponse.status}`);
+                const errorText = await eventResponse.text();
+                console.error('Event fetch error:', errorText);
+                throw new Error(`Failed to fetch event: ${eventResponse.status}`);
             }
 
-            const albumData = await albumResponse.json();
-            console.log('📊 Album data received:', albumData);
-            setAlbum(albumData);
+            const eventData = await eventResponse.json();
+            console.log('Event data received:', eventData);
+            setEvent(eventData);
             setEditForm({
-                name: albumData.name || '',
-                title: albumData.title || '',
-                description: albumData.description || '',
+                name: eventData.name || '',
+                title: eventData.title || '',
+                description: eventData.description || '',
             });
 
             // Fetch persons and photos in parallel
             await Promise.all([
-                fetchPersonsForAlbum(id as string),
-                fetchPhotosForAlbum(id as string)
+                fetchPersonsForEvent(id as string),
+                fetchPhotosForEvent(id as string)
             ]);
 
         } catch (error) {
-            console.error('Failed to fetch album data:', error);
-            setError('Failed to load album data');
+            console.error('Failed to fetch event data:', error);
+            setError('Failed to load event data');
         } finally {
             setLoading(false);
         }
     };
 
-    const fetchPersonsForAlbum = async (albumId: string) => {
+    const fetchPersonsForEvent = async (eventId: string) => {
         try {
-            console.log('👥 Fetching persons for album:', albumId);
+            console.log('Fetching persons for event:', eventId);
 
-            // REMOVED Authorization header - uses getServerSession
-            const personsResponse = await fetch(`/api/events/${albumId}/persons`);
+            const personsResponse = await fetch(`/api/events/${eventId}/persons`);
 
             if (personsResponse.ok) {
                 const personsData = await personsResponse.json();
-                console.log('✅ Persons fetched:', personsData.length);
+                console.log('Persons fetched:', personsData.length);
                 setPersons(personsData);
             } else {
                 console.error('Failed to fetch persons:', personsResponse.status);
@@ -126,16 +175,15 @@ export default function AlbumDetail() {
         }
     };
 
-    const fetchPhotosForAlbum = async (albumId: string) => {
+    const fetchPhotosForEvent = async (eventId: string) => {
         try {
-            console.log('📸 Fetching photos for album:', albumId);
+            console.log('Fetching photos for event:', eventId);
 
-            // REMOVED Authorization header - uses getServerSession
-            const photosResponse = await fetch(`/api/events/${albumId}/photos`);
+            const photosResponse = await fetch(`/api/events/${eventId}/photos`);
 
             if (photosResponse.ok) {
                 const photosData = await photosResponse.json();
-                console.log('✅ Photos fetched:', photosData.length);
+                console.log('Photos fetched:', photosData.length);
                 setPhotos(photosData);
             } else {
                 console.error('Failed to fetch photos:', photosResponse.status);
@@ -154,7 +202,6 @@ export default function AlbumDetail() {
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            // REMOVED Authorization header - uses getServerSession
             const response = await fetch(`/api/events/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -162,13 +209,12 @@ export default function AlbumDetail() {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to update album');
+                throw new Error('Failed to update event');
             }
 
-            // Update local state
-            if (album) {
-                setAlbum({
-                    ...album,
+            if (event) {
+                setEvent({
+                    ...event,
                     name: editForm.name,
                     title: editForm.title,
                     description: editForm.description
@@ -177,11 +223,12 @@ export default function AlbumDetail() {
 
             setActiveTab('people');
         } catch (error) {
-            console.error("Failed to update album:", error);
-            alert("Failed to update album");
+            console.error("Failed to update event:", error);
+            alert("Failed to update event");
         }
     };
 
+    // Pinterest-style photo card component
     const PinterestPhotoCard = ({ photo }: { photo: Photo }) => {
         const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
@@ -214,12 +261,9 @@ export default function AlbumDetail() {
                         }}
                     />
 
-                    {/* Overlay gradient */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                    {/* Top badges */}
                     <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
-                        {/* Status badge */}
                         <div className={`text-xs px-2 py-1 rounded-full font-medium shadow-lg ${photo.status === 'completed'
                             ? 'bg-green-500 text-white'
                             : photo.status === 'processing'
@@ -229,7 +273,6 @@ export default function AlbumDetail() {
                             {photo.status}
                         </div>
 
-                        {/* Quality indicator */}
                         <div
                             className={`w-4 h-4 rounded-full shadow-lg ${photo.isGoodQuality ? 'bg-green-500' : 'bg-red-500'
                                 }`}
@@ -237,7 +280,6 @@ export default function AlbumDetail() {
                         />
                     </div>
 
-                    {/* Bottom info overlay */}
                     <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
                         <h3 className="font-semibold text-sm mb-1 truncate">
                             {photo.originalName}
@@ -262,7 +304,7 @@ export default function AlbumDetail() {
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-                    <p>Loading album...</p>
+                    <p>Loading event...</p>
                 </div>
             </div>
         );
@@ -282,11 +324,11 @@ export default function AlbumDetail() {
         );
     }
 
-    if (!album) {
+    if (!event) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Album not found</h2>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Event not found</h2>
                     <Link href="/dashboard" className="text-blue-600 hover:text-blue-700">
                         ← Back to dashboard
                     </Link>
@@ -309,32 +351,36 @@ export default function AlbumDetail() {
                                 <ArrowLeft className="w-5 h-5" />
                             </Link>
                             <div>
-                                <h1 className="text-3xl font-bold text-gray-900">{album.title}</h1>
-                                <p className="text-gray-600 mt-1">{album.name}</p>
-                                {album.description && (
-                                    <p className="text-sm text-gray-500 mt-1">{album.description}</p>
+                                <h1 className="text-3xl font-bold text-gray-900">{event.title}</h1>
+                                <p className="text-gray-600 mt-1">{event.name}</p>
+                                {event.description && (
+                                    <p className="text-sm text-gray-500 mt-1">{event.description}</p>
                                 )}
                             </div>
                         </div>
                         <div className="flex items-center space-x-6 text-sm text-gray-500">
                             <div className="flex items-center">
                                 <Calendar className="w-4 h-4 mr-2" />
-                                {new Date(album.createdAt).toLocaleDateString()}
+                                {new Date(event.createdAt).toLocaleDateString()}
+                            </div>
+                            <div className="flex items-center">
+                                <Folder className="w-4 h-4 mr-2" />
+                                {event.totalAlbums} albums
                             </div>
                             <div className="flex items-center">
                                 <ImageIcon className="w-4 h-4 mr-2" />
-                                {album.photoCount} photos
+                                {event.totalPhotos} photos
                             </div>
                             <div className="flex items-center">
                                 <Users className="w-4 h-4 mr-2" />
-                                {album.personCount} people
+                                {event.personCount} people
                             </div>
                             <Link
-                                href={`/upload?eventId=${album.id}`}
+                                href={`/upload?eventId=${event.id}`}
                                 className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
                             >
                                 <Plus className="w-4 h-4 mr-1" />
-                                Add Photos
+                                Add Album
                             </Link>
                         </div>
                     </div>
@@ -355,6 +401,15 @@ export default function AlbumDetail() {
                             People ({persons.length})
                         </button>
                         <button
+                            onClick={() => setActiveTab('albums')}
+                            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'albums'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                }`}
+                        >
+                            Albums ({event.totalAlbums})
+                        </button>
+                        <button
                             onClick={() => setActiveTab('photos')}
                             className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'photos'
                                 ? 'border-blue-500 text-blue-600'
@@ -371,7 +426,7 @@ export default function AlbumDetail() {
                                 }`}
                         >
                             <Edit className="w-4 h-4 inline mr-1" />
-                            Edit Album
+                            Edit Event
                         </button>
                     </div>
                 </div>
@@ -384,9 +439,8 @@ export default function AlbumDetail() {
                     <div className="space-y-6">
                         <div>
                             <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-semibold text-gray-900">People in this album</h2>
+                                <h2 className="text-2xl font-semibold text-gray-900">People in this event</h2>
 
-                                {/* Sort Controls */}
                                 {persons.length > 0 && (
                                     <div className="flex gap-2">
                                         <button
@@ -416,6 +470,15 @@ export default function AlbumDetail() {
                                         >
                                             Best Quality
                                         </button>
+                                        <button
+                                            onClick={() => setSortBy('alphabetical')}
+                                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${sortBy === 'alphabetical'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                }`}
+                                        >
+                                            A-Z
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -428,22 +491,12 @@ export default function AlbumDetail() {
                                     </p>
                                     <div className="flex gap-3 justify-center">
                                         <Link
-                                            href={`/upload?eventId=${album.id}`}
+                                            href={`/upload?eventId=${event.id}`}
                                             className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                                         >
                                             <Plus className="w-4 h-4 mr-2" />
                                             Process Photos
                                         </Link>
-                                        {album.driveLink && (
-                                            <a
-                                                href={album.driveLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                                            >
-                                                View Drive Folder
-                                            </a>
-                                        )}
                                     </div>
                                 </div>
                             ) : (
@@ -452,7 +505,7 @@ export default function AlbumDetail() {
                                         <PersonCard
                                             key={person.id}
                                             person={person}
-                                            onClick={() => router.push(`/dashboard/${album.id}/persons/${person.id}`)}
+                                            onClick={() => router.push(`/dashboard/${event.id}/persons/${person.id}`)}
                                         />
                                     ))}
                                 </div>
@@ -461,7 +514,104 @@ export default function AlbumDetail() {
                     </div>
                 )}
 
-                {/* Photos Tab - Pinterest Style */}
+                {/* Albums Tab */}
+                {activeTab === 'albums' && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-2xl font-semibold text-gray-900">Albums</h2>
+                            <Link
+                                href={`/upload?eventId=${event.id}`}
+                                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Create Album
+                            </Link>
+                        </div>
+                        {event.albums.length === 0 ? (
+                            <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+                                <Folder className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">No albums yet</h3>
+                                <p className="text-gray-600 mb-6">
+                                    Create your first album to start organizing photos
+                                </p>
+                                <Link
+                                    href={`/upload?eventId=${event.id}`}
+                                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    Create Album
+                                </Link>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {event.albums.map((album) => (
+                                    <div key={album.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                                        <div className="p-6">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className="text-lg font-semibold text-gray-900">{album.name}</h3>
+                                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                                    album.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                                    album.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                                                    'bg-blue-100 text-blue-800'
+                                                }`}>
+                                                    {album.status}
+                                                </span>
+                                            </div>
+                                            {album.description && (
+                                                <p className="text-gray-600 text-sm mb-4">{album.description}</p>
+                                            )}
+                                            <div className="grid grid-cols-3 gap-4 text-center mb-4">
+                                                <div>
+                                                    <div className="text-lg font-semibold text-gray-900">{album.photoCount}</div>
+                                                    <div className="text-xs text-gray-500">Photos</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-lg font-semibold text-gray-900">{album.driveFolders.length}</div>
+                                                    <div className="text-xs text-gray-500">Folders</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-lg font-semibold text-gray-900">
+                                                        {album.driveFolders.reduce((sum, folder) => sum + folder.photoCount, 0)}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">Drive Photos</div>
+                                                </div>
+                                            </div>
+                                            {album.driveFolders.length > 0 && (
+                                                <div className="mb-4">
+                                                    <h4 className="text-sm font-medium text-gray-700 mb-2">Drive Folders:</h4>
+                                                    <div className="space-y-1">
+                                                        {album.driveFolders.map((folder, index) => (
+                                                            <div key={index} className="flex items-center justify-between text-xs">
+                                                                <span className="text-gray-600 truncate">{folder.name}</span>
+                                                                <span className="text-gray-500">{folder.photoCount} photos</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="flex gap-2">
+                                                <Link
+                                                    href={`/albums/${album.id}`}
+                                                    className="flex-1 text-center px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                                                >
+                                                    View Album
+                                                </Link>
+                                                <Link
+                                                    href={`/upload?eventId=${event.id}&albumId=${album.id}`}
+                                                    className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Photos Tab */}
                 {activeTab === 'photos' && (
                     <div className="space-y-6">
                         <div>
@@ -474,7 +624,7 @@ export default function AlbumDetail() {
                                         Start by processing photos from Google Drive or uploading new ones
                                     </p>
                                     <Link
-                                        href={`/upload?eventId=${album.id}`}
+                                        href={`/upload?eventId=${event.id}`}
                                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                                     >
                                         <Plus className="w-4 h-4 mr-2" />
@@ -482,7 +632,6 @@ export default function AlbumDetail() {
                                     </Link>
                                 </div>
                             ) : (
-                                /* Pinterest-style masonry layout */
                                 <div
                                     className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4"
                                     style={{ columnFill: 'balance' }}
@@ -500,7 +649,7 @@ export default function AlbumDetail() {
                 {activeTab === 'edit' && (
                     <div className="space-y-6">
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <h2 className="text-2xl font-semibold text-gray-900 mb-6">Edit Album</h2>
+                            <h2 className="text-2xl font-semibold text-gray-900 mb-6">Edit Event</h2>
 
                             <form onSubmit={handleEditSubmit} className="space-y-6">
                                 <div>
@@ -562,23 +711,6 @@ export default function AlbumDetail() {
                         </div>
                     </div>
                 )}
-            </div>
-
-            {/* Debug Info Panel */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h3 className="text-sm font-medium text-blue-800 mb-2">
-                        Debug Info
-                    </h3>
-                    <div className="text-sm text-blue-700 space-y-1">
-                        <p><strong>Album ID:</strong> {album.id}</p>
-                        <p><strong>Status:</strong> {album.status}</p>
-                        <p><strong>Drive Link:</strong> {album.driveLink ? 'Yes' : 'No'}</p>
-                        <p><strong>Persons Found:</strong> {persons.length}</p>
-                        <p><strong>Photos Found:</strong> {photos.length}</p>
-                        <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces.length > 0).length}</p>
-                    </div>
-                </div>
             </div>
         </div>
     );

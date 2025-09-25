@@ -1,4 +1,4 @@
-// api/photos/[photoId]/thumbnail/route.ts
+// api/photos/[photoId]/thumbnail/route.ts - FIXED: Use album->event relation
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -30,13 +30,15 @@ export async function GET(
 
     console.log('🖼️ Serving cropped thumbnail for photo:', photoId, `Crop: ${x},${y},${w}x${h} -> ${size}x${size}`);
 
-    // Find the photo and verify user access
+    // FIXED: Use album relation to access event and user
     const photo = await prisma.photo.findFirst({
       where: {
         id: photoId,
-        event: {
-          user: {
-            email: session.user.email
+        album: {
+          event: {
+            user: {
+              email: session.user.email
+            }
           }
         }
       }
@@ -91,7 +93,7 @@ export async function GET(
 
         console.log('✅ Serving cropped thumbnail successfully:', photo.originalName);
 
-        return new Response(croppedBuffer, {
+        return new Response(new Uint8Array(croppedBuffer), {
           headers: {
             'Content-Type': 'image/jpeg',
             'Cache-Control': 'public, max-age=86400',
