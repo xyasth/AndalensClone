@@ -43,7 +43,7 @@ export async function GET(
       id: person.id,
       name: person.name,
       eventId: person.eventId,
-      cluster_id: person.clusterId,
+      clusterId: person.clusterId,
       photoCount: person.photoCount,
       thumbnailPath: person.thumbnailPath,
       averageConfidence: person.averageConfidence,

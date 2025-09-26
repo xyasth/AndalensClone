@@ -12,28 +12,27 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // FIX: Await params in Next.js 15
     const params = await context.params;
     const { photoId } = params;
 
     console.log('🖼️ Serving photo:', photoId);
 
-    // Find the photo and verify user access
+    // Find the photo and verify user access through album->event->user relation
     const photo = await prisma.photo.findFirst({
       where: {
         id: photoId,
         album: {
-        event: {
-          user: {
-            email: session.user.email
+          event: {
+            user: {
+              email: session.user.email
+            }
           }
         }
-      }
       },
       include: {
         album: {
@@ -54,7 +53,7 @@ export async function GET(
     // If photo is from Google Drive, get it from Drive API
     if (photo.driveFileId) {
       const accessToken = (session as any).accessToken;
-      
+
       if (!accessToken) {
         console.error('❌ No Google Drive access token');
         return NextResponse.json({ error: 'No Google Drive access' }, { status: 401 });
@@ -77,12 +76,12 @@ export async function GET(
       }
 
       const imageBuffer = await driveResponse.arrayBuffer();
-      
+
       // Determine content type from original name
       const extension = photo.originalName.split('.').pop()?.toLowerCase();
-      const contentType = extension === 'png' ? 'image/png' : 
-                         extension === 'gif' ? 'image/gif' : 
-                         extension === 'webp' ? 'image/webp' : 'image/jpeg';
+      const contentType = extension === 'png' ? 'image/png' :
+        extension === 'gif' ? 'image/gif' :
+          extension === 'webp' ? 'image/webp' : 'image/jpeg';
 
       console.log('✅ Serving photo successfully:', photo.originalName, contentType);
 
@@ -101,3 +100,4 @@ export async function GET(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+

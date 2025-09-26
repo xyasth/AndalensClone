@@ -13,24 +13,24 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const params = await context.params;
-    const { photoId } = params;
-    
+    const { photoId } = await params;
+
     const { searchParams } = new URL(request.url);
     const x = parseInt(searchParams.get('x') || '0');
     const y = parseInt(searchParams.get('y') || '0');
     const w = parseInt(searchParams.get('w') || '100');
     const h = parseInt(searchParams.get('h') || '100');
-    const size = parseInt(searchParams.get('size') || '200'); // Output size
+    const size = parseInt(searchParams.get('size') || '200');
 
     console.log('🖼️ Serving cropped thumbnail for photo:', photoId, `Crop: ${x},${y},${w}x${h} -> ${size}x${size}`);
 
-    // FIXED: Use album relation to access event and user
+    // Find photo with user access verification through album->event->user
     const photo = await prisma.photo.findFirst({
       where: {
         id: photoId,
@@ -51,8 +51,8 @@ export async function GET(
 
     // If photo is from Google Drive, get and crop it
     if (photo.driveFileId) {
-      const accessToken = (session as any).accessToken;
-      
+      const accessToken = session.accessToken;
+
       if (!accessToken) {
         console.error('❌ No Google Drive access token for thumbnail');
         return NextResponse.json({ error: 'No Google Drive access' }, { status: 401 });
@@ -74,17 +74,20 @@ export async function GET(
       }
 
       const imageBuffer = await driveResponse.arrayBuffer();
-      
+
       try {
+        // Import sharp dynamically to handle server-side image processing
+        const sharp = (await import('sharp')).default;
+
         // Crop and resize the image using Sharp
         const croppedBuffer = await sharp(Buffer.from(imageBuffer))
-          .extract({ 
-            left: Math.max(0, x), 
-            top: Math.max(0, y), 
-            width: w, 
-            height: h 
+          .extract({
+            left: Math.max(0, x),
+            top: Math.max(0, y),
+            width: w,
+            height: h
           })
-          .resize(size, size, { 
+          .resize(size, size, {
             fit: 'cover',
             position: 'center'
           })
@@ -93,7 +96,7 @@ export async function GET(
 
         console.log('✅ Serving cropped thumbnail successfully:', photo.originalName);
 
-        return new Response(new Uint8Array(croppedBuffer), {
+        return new Response(croppedBuffer, {
           headers: {
             'Content-Type': 'image/jpeg',
             'Cache-Control': 'public, max-age=86400',

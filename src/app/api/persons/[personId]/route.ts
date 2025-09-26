@@ -11,7 +11,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -40,7 +40,7 @@ export async function GET(
       id: person.id,
       name: person.name,
       eventId: person.eventId,
-      cluster_id: person.clusterId,
+      clusterId: person.clusterId,
       photoCount: person.photoCount,
       thumbnailPath: person.thumbnailPath,
       averageConfidence: person.averageConfidence,
@@ -66,12 +66,12 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = await params;
     const { name } = await request.json();
 
     if (!name || name.trim().length === 0) {

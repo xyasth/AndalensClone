@@ -1,3 +1,4 @@
+// Fixed API route: /api/persons/[personId]/photos/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -11,7 +12,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -40,12 +41,23 @@ export async function GET(
       return NextResponse.json({ error: 'Person not found' }, { status: 404 });
     }
 
+    // Get all faces for this person with their photos
     const faces = await prisma.face.findMany({
       where: {
         personId: personId
       },
       include: {
-        photo: true
+        photo: {
+          include: {
+            album: true,
+            // Include ALL faces for each photo, not just the person's faces
+            faces: {
+              include: {
+                person: true
+              }
+            }
+          }
+        }
       },
       orderBy: {
         photo: {
@@ -60,42 +72,66 @@ export async function GET(
       where: { personId: personId }
     });
 
-    const responsePhotos = faces.map(face => ({
-      id: face.photo.id,
-      originalName: face.photo.originalName,
-      path: face.photo.path,
-      eventId: face.photo.eventId,
-      uploadedAt: face.photo.uploadedAt.toISOString(),
-      isGoodQuality: face.photo.isGoodQuality,
-      qualityScore: face.photo.qualityScore,
-      processedAt: face.photo.processedAt?.toISOString(),
-      status: face.photo.status.toLowerCase(),
-      faces: [{
-        foto_id: face.fotoId,
-        album: {
-          id: person.eventId,
-          name: person.event.name,
-          event: { id: person.eventId, name: person.event.name }
-        },
-        embedding: face.embedding,
-        cluster_id: face.clusterId,
-        path: face.photo.path,
-        facial_area: {
-          x: face.facialAreaX,
-          y: face.facialAreaY,
-          w: face.facialAreaW,
-          h: face.facialAreaH
-        },
-        face_confidence: face.faceConfidence
-      }]
-    }));
+    // Group faces by photo and create proper photo objects
+    const photoMap = new Map();
+    
+    faces.forEach(face => {
+      const photo = face.photo;
+      if (!photoMap.has(photo.id)) {
+        photoMap.set(photo.id, {
+          id: photo.id,
+          originalName: photo.originalName,
+          path: photo.path,
+          eventId: photo.eventId,
+          albumId: photo.albumId,
+          uploadedAt: photo.uploadedAt.toISOString(),
+          isGoodQuality: photo.isGoodQuality,
+          qualityScore: photo.qualityScore,
+          processedAt: photo.processedAt?.toISOString(),
+          status: photo.status.toLowerCase(),
+          faces: [] // Will be populated below
+        });
+      }
+    });
+
+    // Now populate the faces for each photo
+    faces.forEach(face => {
+      const photo = photoMap.get(face.photo.id);
+      if (photo) {
+        // Add ALL faces for this photo, not just the person's face
+        face.photo.faces.forEach(photoFace => {
+          photo.faces.push({
+            id: photoFace.id,
+            personId: photoFace.personId,
+            clusterId: photoFace.clusterId,
+            facialAreaX: photoFace.facialAreaX,
+            facialAreaY: photoFace.facialAreaY,
+            facialAreaW: photoFace.facialAreaW,
+            facialAreaH: photoFace.facialAreaH,
+            faceConfidence: photoFace.faceConfidence,
+            embedding: photoFace.embedding,
+            // Legacy format for backward compatibility
+            foto_id: photoFace.fotoId,
+            facial_area: {
+              x: photoFace.facialAreaX,
+              y: photoFace.facialAreaY,
+              w: photoFace.facialAreaW,
+              h: photoFace.facialAreaH
+            },
+            face_confidence: photoFace.faceConfidence
+          });
+        });
+      }
+    });
+
+    const responsePhotos = Array.from(photoMap.values());
 
     return NextResponse.json({
       photos: responsePhotos,
       person: {
         id: person.id,
         name: person.name,
-        cluster_id: person.clusterId,
+        clusterId: person.clusterId,
         eventId: person.eventId,
         event: {
           id: person.event.id,

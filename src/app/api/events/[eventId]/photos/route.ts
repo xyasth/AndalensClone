@@ -60,7 +60,7 @@ export async function GET(
           event: { id: eventId, name: event.name }
         },
         embedding: face.embedding,
-        cluster_id: face.clusterId,
+        clusterId: face.clusterId,
         path: photo.path,
         facial_area: {
           x: face.facialAreaX,

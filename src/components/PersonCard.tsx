@@ -4,7 +4,7 @@ import { User } from 'lucide-react';
 interface Person {
   id: string;
   name: string;
-  cluster_id: number;
+  clusterId: string; // Fixed: should be string, not number
   photoCount: number;
   averageConfidence: number;
   thumbnailPath?: string;
@@ -56,7 +56,7 @@ const ProperFaceCrop = ({ person, className = '' }: ProperFaceCropProps) => {
           console.log('🖼️ Image loaded successfully for', person.name,
             'Size:', img.naturalWidth, 'x', img.naturalHeight);
 
-          // Create a new canvas element directly (don't rely on ref)
+          // Create a new canvas element directly
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
 
@@ -93,7 +93,7 @@ const ProperFaceCrop = ({ person, className = '' }: ProperFaceCropProps) => {
           ctx.drawImage(
             img,
             cropX, cropY, cropW, cropH, // Source crop area
-            0, 0, size, size             // Destination (fill entire canvas)
+            0, 0, size, size             // Destination
           );
 
           // Convert to data URL
@@ -141,19 +141,17 @@ const ProperFaceCrop = ({ person, className = '' }: ProperFaceCropProps) => {
   }
 
   return (
-    <>
-      <div className={`aspect-square rounded-full overflow-hidden bg-gray-100 ${className}`}>
-        <img
-          src={croppedImage}
-          alt={person.name}
-          className="w-full h-full object-cover"
-        />
-      </div>
-    </>
+    <div className={`aspect-square rounded-full overflow-hidden bg-gray-100 ${className}`}>
+      <img
+        src={croppedImage}
+        alt={person.name}
+        className="w-full h-full object-cover"
+      />
+    </div>
   );
 };
 
-// Person Card component
+// Person Card component - Fixed for both dashboard and event detail usage
 interface PersonCardProps {
   person: Person;
   onClick: () => void;
@@ -174,20 +172,61 @@ const PersonCard = ({ person, onClick }: PersonCardProps) => {
 
       <div className="text-center">
         <h3 className="font-medium text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
-          {person.name.startsWith("Person")
-            ? `Person ${parseInt(person.name.replace("Person ", "")) + 1}`
-            : person.name}
+          {person.name}
         </h3>
         <p className="text-xs text-gray-500">
           {person.photoCount} photos
         </p>
-        <p className="text-xs text-gray-500">
+        <div className="flex items-center justify-center text-xs text-gray-500 mt-1">
+          <div className={`w-2 h-2 rounded-full mr-1 ${person.averageConfidence > 0.8 ? 'bg-green-400' :
+              person.averageConfidence > 0.6 ? 'bg-yellow-400' : 'bg-red-400'
+            }`} />
           {Math.round(person.averageConfidence * 100)}% confidence
-        </p>
+        </div>
       </div>
-
     </div>
   );
 };
 
+// Alternative PersonCard for event detail page with larger styling
+interface EventPersonCardProps {
+  person: Person;
+  onClick: () => void;
+}
+
+const EventPersonCard = ({ person, onClick }: EventPersonCardProps) => (
+  <div
+    onClick={onClick}
+    className="group bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer"
+  >
+    <div className="text-center">
+      <div className="w-20 h-20 mx-auto mb-3 rounded-full overflow-hidden">
+        {person.thumbnailPath ? (
+          <ProperFaceCrop
+            person={person}
+            className="w-full h-full"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+            <User className="w-8 h-8 text-white" />
+          </div>
+        )}
+      </div>
+      <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
+        {person.name}
+      </h3>
+      <p className="text-sm text-gray-600 mb-2">{person.photoCount} photos</p>
+      <div className="flex items-center justify-center text-xs text-gray-500">
+        <div className="flex items-center">
+          <div className={`w-2 h-2 rounded-full mr-1 ${person.averageConfidence > 0.8 ? 'bg-green-400' :
+              person.averageConfidence > 0.6 ? 'bg-yellow-400' : 'bg-red-400'
+            }`} />
+          {Math.round(person.averageConfidence * 100)}% confidence
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+export { PersonCard, EventPersonCard, ProperFaceCrop };
 export default PersonCard;

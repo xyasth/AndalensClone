@@ -4,60 +4,59 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User, Loader2, AlertCircle, Folder, CloudDownload } from "lucide-react";
+import { ArrowLeft, Edit, Users, Image as ImageIcon, Calendar, Plus, User, Loader2, AlertCircle, Folder } from "lucide-react";
 import { Event, Person, Photo } from "@/types";
 
 // PersonCard component - inline for completeness
 interface PersonCardProps {
-  person: Person;
-  onClick: () => void;
+    person: Person;
+    onClick: () => void;
 }
 
 const PersonCard = ({ person, onClick }: PersonCardProps) => (
-  <div
-    onClick={onClick}
-    className="group bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer"
-  >
-    <div className="text-center">
-      <div className="w-20 h-20 mx-auto mb-3 rounded-full overflow-hidden">
-        {person.thumbnailPath ? (
-          <img
-            src={person.thumbnailPath}
-            alt={person.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              target.parentElement!.innerHTML = `
-                <div class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                  <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
-                  </svg>
+    <div
+        onClick={onClick}
+        className="group bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer"
+    >
+        <div className="text-center">
+            <div className="w-20 h-20 mx-auto mb-3 rounded-full overflow-hidden">
+                {person.thumbnailPath ? (
+                    <img
+                        src={person.thumbnailPath}
+                        alt={person.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.parentElement!.innerHTML = `
+                                <div class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                                    <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                                    </svg>
+                                </div>
+                            `;
+                        }}
+                    />
+                ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                        <User className="w-8 h-8 text-white" />
+                    </div>
+                )}
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
+                {person.name}
+            </h3>
+            <p className="text-sm text-gray-600 mb-2">{person.photoCount} photos</p>
+            <div className="flex items-center justify-center text-xs text-gray-500">
+                <div className="flex items-center">
+                    <div className={`w-2 h-2 rounded-full mr-1 ${person.averageConfidence > 0.8 ? 'bg-green-400' :
+                        person.averageConfidence > 0.6 ? 'bg-yellow-400' : 'bg-red-400'
+                        }`} />
+                    {Math.round(person.averageConfidence * 100)}% confidence
                 </div>
-              `;
-            }}
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-            <User className="w-8 h-8 text-white" />
-          </div>
-        )}
-      </div>
-      <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
-        {person.name}
-      </h3>
-      <p className="text-sm text-gray-600 mb-2">{person.photoCount} photos</p>
-      <div className="flex items-center justify-center text-xs text-gray-500">
-        <div className="flex items-center">
-          <div className={`w-2 h-2 rounded-full mr-1 ${
-            person.averageConfidence > 0.8 ? 'bg-green-400' :
-            person.averageConfidence > 0.6 ? 'bg-yellow-400' : 'bg-red-400'
-          }`} />
-          {Math.round(person.averageConfidence * 100)}% confidence
+            </div>
         </div>
-      </div>
     </div>
-  </div>
 );
 
 export default function EventDetail() {
@@ -79,8 +78,9 @@ export default function EventDetail() {
     });
 
     const sortedPersons = useMemo(() => {
+        // Filter out the centroid person (cluster_id === '-1' or cluster_id === -1)
         const filteredPersons = persons.filter(person =>
-            String(person.clusterId) !== '-1'
+            person.clusterId !== '-1' && person.clusterId !== -1
         );
 
         const sorted = [...filteredPersons];
@@ -88,11 +88,13 @@ export default function EventDetail() {
         switch (sortBy) {
             case 'numerical':
                 return sorted.sort((a, b) => {
+                    // For names like "Person 1", "Person 2", etc., sort by cluster_id numerically
                     if (a.name.startsWith('Person ') && b.name.startsWith('Person ')) {
-                        const aNum = parseInt(a.clusterId);
-                        const bNum = parseInt(b.clusterId);
+                        const aNum = parseInt(a.clusterId.toString());
+                        const bNum = parseInt(b.clusterId.toString());
                         return aNum - bNum;
                     }
+                    // Otherwise, sort alphabetically
                     return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
                 });
             case 'photoCount':
@@ -285,7 +287,7 @@ export default function EventDetail() {
                             {photo.originalName}
                         </h3>
                         <div className="flex items-center justify-between text-xs opacity-90">
-                            <span>{photo.faces.length} faces detected</span>
+                            <span>{photo.faces?.length || 0} faces detected</span>
                             <span>{new Date(photo.uploadedAt).toLocaleDateString()}</span>
                         </div>
                         {imageDimensions && (
@@ -365,18 +367,18 @@ export default function EventDetail() {
                             </div>
                             <div className="flex items-center">
                                 <Folder className="w-4 h-4 mr-2" />
-                                {event.totalAlbums} albums
+                                {event.albums?.length || 0} albums
                             </div>
                             <div className="flex items-center">
                                 <ImageIcon className="w-4 h-4 mr-2" />
-                                {event.totalPhotos} photos
+                                {photos.length} photos
                             </div>
                             <div className="flex items-center">
                                 <Users className="w-4 h-4 mr-2" />
-                                {event.personCount} people
+                                {persons.length} people
                             </div>
                             <Link
-                                href={`/upload?eventId=${event.id}`}
+                                href={`/dashboard/add?eventId=${event.id}`}
                                 className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
                             >
                                 <Plus className="w-4 h-4 mr-1" />
@@ -407,7 +409,7 @@ export default function EventDetail() {
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                 }`}
                         >
-                            Albums ({event.totalAlbums})
+                            Albums ({event.albums?.length || 0})
                         </button>
                         <button
                             onClick={() => setActiveTab('photos')}
@@ -491,11 +493,11 @@ export default function EventDetail() {
                                     </p>
                                     <div className="flex gap-3 justify-center">
                                         <Link
-                                            href={`/upload?eventId=${event.id}`}
+                                            href={`/dashboard/add?eventId=${event.id}`}
                                             className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                                         >
                                             <Plus className="w-4 h-4 mr-2" />
-                                            Process Photos
+                                            Add Album
                                         </Link>
                                     </div>
                                 </div>
@@ -520,14 +522,14 @@ export default function EventDetail() {
                         <div className="flex justify-between items-center">
                             <h2 className="text-2xl font-semibold text-gray-900">Albums</h2>
                             <Link
-                                href={`/upload?eventId=${event.id}`}
+                                href={`/dashboard/add?eventId=${event.id}`}
                                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                             >
                                 <Plus className="w-4 h-4 mr-2" />
                                 Create Album
                             </Link>
                         </div>
-                        {event.albums.length === 0 ? (
+                        {!event.albums || event.albums.length === 0 ? (
                             <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
                                 <Folder className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                                 <h3 className="text-lg font-medium text-gray-900 mb-2">No albums yet</h3>
@@ -535,7 +537,7 @@ export default function EventDetail() {
                                     Create your first album to start organizing photos
                                 </p>
                                 <Link
-                                    href={`/upload?eventId=${event.id}`}
+                                    href={`/dashboard/add?eventId=${event.id}`}
                                     className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                                 >
                                     <Plus className="w-4 h-4 mr-2" />
@@ -549,34 +551,27 @@ export default function EventDetail() {
                                         <div className="p-6">
                                             <div className="flex items-center justify-between mb-4">
                                                 <h3 className="text-lg font-semibold text-gray-900">{album.name}</h3>
-                                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                                    album.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${album.status === 'completed' ? 'bg-green-100 text-green-800' :
                                                     album.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
-                                                    'bg-blue-100 text-blue-800'
-                                                }`}>
+                                                        'bg-blue-100 text-blue-800'
+                                                    }`}>
                                                     {album.status}
                                                 </span>
                                             </div>
                                             {album.description && (
                                                 <p className="text-gray-600 text-sm mb-4">{album.description}</p>
                                             )}
-                                            <div className="grid grid-cols-3 gap-4 text-center mb-4">
+                                            <div className="grid grid-cols-2 gap-4 text-center mb-4">
                                                 <div>
                                                     <div className="text-lg font-semibold text-gray-900">{album.photoCount}</div>
                                                     <div className="text-xs text-gray-500">Photos</div>
                                                 </div>
                                                 <div>
-                                                    <div className="text-lg font-semibold text-gray-900">{album.driveFolders.length}</div>
-                                                    <div className="text-xs text-gray-500">Folders</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-lg font-semibold text-gray-900">
-                                                        {album.driveFolders.reduce((sum, folder) => sum + folder.photoCount, 0)}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">Drive Photos</div>
+                                                    <div className="text-lg font-semibold text-gray-900">{album.driveFolders?.length || 0}</div>
+                                                    <div className="text-xs text-gray-500">Drive Folders</div>
                                                 </div>
                                             </div>
-                                            {album.driveFolders.length > 0 && (
+                                            {album.driveFolders && album.driveFolders.length > 0 && (
                                                 <div className="mb-4">
                                                     <h4 className="text-sm font-medium text-gray-700 mb-2">Drive Folders:</h4>
                                                     <div className="space-y-1">
@@ -591,7 +586,7 @@ export default function EventDetail() {
                                             )}
                                             <div className="flex gap-2">
                                                 <Link
-                                                    href={`/albums/${album.id}`}
+                                                    href={`/dashboard/albums/${album.id}`}
                                                     className="flex-1 text-center px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
                                                 >
                                                     View Album
@@ -621,14 +616,14 @@ export default function EventDetail() {
                                     <ImageIcon className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                                     <h3 className="text-lg font-medium text-gray-900 mb-2">No photos processed yet</h3>
                                     <p className="text-gray-600 mb-6">
-                                        Start by processing photos from Google Drive or uploading new ones
+                                        Start by creating albums and processing photos from Google Drive or uploading new ones
                                     </p>
                                     <Link
-                                        href={`/upload?eventId=${event.id}`}
+                                        href={`/dashboard/add?eventId=${event.id}`}
                                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                                     >
                                         <Plus className="w-4 h-4 mr-2" />
-                                        Process Photos
+                                        Create Album
                                     </Link>
                                 </div>
                             ) : (
@@ -711,6 +706,23 @@ export default function EventDetail() {
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Debug Info Panel */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 className="text-sm font-medium text-blue-800 mb-2">
+                        Debug Info
+                    </h3>
+                    <div className="text-sm text-blue-700 space-y-1">
+                        <p><strong>Event ID:</strong> {event.id}</p>
+                        <p><strong>Status:</strong> {event.status}</p>
+                        <p><strong>Albums:</strong> {event.albums?.length || 0}</p>
+                        <p><strong>Persons Found:</strong> {persons.length}</p>
+                        <p><strong>Photos Found:</strong> {photos.length}</p>
+                        <p><strong>Photos with Faces:</strong> {photos.filter(p => p.faces && p.faces.length > 0).length}</p>
+                    </div>
+                </div>
             </div>
         </div>
     );

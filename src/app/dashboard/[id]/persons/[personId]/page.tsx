@@ -13,7 +13,6 @@ interface PhotoWithFaceOverlayProps {
 }
 
 const PhotoWithFaceOverlay = ({ photo, person }: PhotoWithFaceOverlayProps) => {
-  const [showOverlay, setShowOverlay] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -27,12 +26,25 @@ const PhotoWithFaceOverlay = ({ photo, person }: PhotoWithFaceOverlayProps) => {
   // Find faces that belong to this person
   const personFaces = photo.faces.filter(face => face.personId === person.id);
 
+  // Debug logging
+  console.log('PhotoWithFaceOverlay Debug:', {
+    photoId: photo.id,
+    personId: person.id,
+    totalFaces: photo.faces.length,
+    personFaces: personFaces.length,
+    imageDimensions,
+    rawFacesData: photo.faces, // Add this to see the actual face data
+    faces: personFaces.map(face => ({
+      x: face.facialAreaX,
+      y: face.facialAreaY,
+      w: face.facialAreaW,
+      h: face.facialAreaH,
+      confidence: face.faceConfidence
+    }))
+  });
+
   return (
-    <div 
-      className="relative break-inside-avoid mb-4 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer bg-white"
-      onMouseEnter={() => setShowOverlay(true)}
-      onMouseLeave={() => setShowOverlay(false)}
-    >
+    <div className="relative break-inside-avoid mb-4 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer bg-white">
       <div className="relative">
         <img
           src={`/api/photos/${photo.id}`}
@@ -52,22 +64,18 @@ const PhotoWithFaceOverlay = ({ photo, person }: PhotoWithFaceOverlayProps) => {
           }}
         />
 
-        {/* Face overlay rectangles */}
-        {showOverlay && personFaces.map((face, index) => (
+        {/* Face overlay rectangles - now white border with no fill or labels */}
+        {personFaces.map((face, index) => (
           <div
             key={index}
-            className="absolute border-2 border-blue-400 bg-blue-400/20 transition-opacity duration-300"
+            className="absolute border-1 border-white z-40"
             style={{
-              left: `${(face.facialAreaX / (imageDimensions?.width || 1)) * 100}%`,
-              top: `${(face.facialAreaY / (imageDimensions?.height || 1)) * 100}%`,
-              width: `${(face.facialAreaW / (imageDimensions?.width || 1)) * 100}%`,
-              height: `${(face.facialAreaH / (imageDimensions?.height || 1)) * 100}%`,
+              left: `${((face.facial_area?.x || face.facialAreaX) / (imageDimensions?.width || 1)) * 100}%`,
+              top: `${((face.facial_area?.y || face.facialAreaY) / (imageDimensions?.height || 1)) * 100}%`,
+              width: `${((face.facial_area?.w || face.facialAreaW) / (imageDimensions?.width || 1)) * 100}%`,
+              height: `${((face.facial_area?.h || face.facialAreaH) / (imageDimensions?.height || 1)) * 100}%`,
             }}
-          >
-            <div className="absolute -top-6 left-0 bg-blue-500 text-white text-xs px-2 py-1 rounded">
-              {Math.round(face.faceConfidence * 100)}%
-            </div>
-          </div>
+          />
         ))}
 
         {/* Gradient overlay */}
@@ -115,6 +123,7 @@ const PhotoWithFaceOverlay = ({ photo, person }: PhotoWithFaceOverlayProps) => {
     </div>
   );
 };
+
 
 export default function PersonDetailPage() {
   const params = useParams();
@@ -351,7 +360,7 @@ export default function PersonDetailPage() {
         <div className="mb-6">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">All photos of {person.name}</h2>
           <p className="text-gray-600">
-            These photos have been automatically grouped using AI face recognition. Hover over photos to see face detection boxes.
+            These photos have been automatically grouped using AI face recognition. Face detection boxes are always visible.
           </p>
         </div>
 
@@ -410,22 +419,22 @@ export default function PersonDetailPage() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Face Detection Quality</h3>
               <div className="space-y-2">
                 {(() => {
-                  const allFaces = photos.flatMap(photo => 
+                  const allFaces = photos.flatMap(photo =>
                     photo.faces.filter(face => face.personId === person.id)
                   );
                   const highConfidence = allFaces.filter(face => face.faceConfidence > 0.8).length;
                   const mediumConfidence = allFaces.filter(face => face.faceConfidence > 0.6 && face.faceConfidence <= 0.8).length;
                   const lowConfidence = allFaces.filter(face => face.faceConfidence <= 0.6).length;
                   const total = allFaces.length;
-                  
+
                   return (
                     <>
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">High Confidence (&gt;80%)</span>
                         <div className="flex items-center">
                           <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
-                            <div 
-                              className="bg-green-500 h-2 rounded-full" 
+                            <div
+                              className="bg-green-500 h-2 rounded-full"
                               style={{ width: `${total > 0 ? (highConfidence / total) * 100 : 0}%` }}
                             />
                           </div>
@@ -436,8 +445,8 @@ export default function PersonDetailPage() {
                         <span className="text-sm text-gray-600">Medium Confidence (60-80%)</span>
                         <div className="flex items-center">
                           <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
-                            <div 
-                              className="bg-yellow-500 h-2 rounded-full" 
+                            <div
+                              className="bg-yellow-500 h-2 rounded-full"
                               style={{ width: `${total > 0 ? (mediumConfidence / total) * 100 : 0}%` }}
                             />
                           </div>
@@ -448,8 +457,8 @@ export default function PersonDetailPage() {
                         <span className="text-sm text-gray-600">Low Confidence (&lt;60%)</span>
                         <div className="flex items-center">
                           <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
-                            <div 
-                              className="bg-red-500 h-2 rounded-full" 
+                            <div
+                              className="bg-red-500 h-2 rounded-full"
                               style={{ width: `${total > 0 ? (lowConfidence / total) * 100 : 0}%` }}
                             />
                           </div>
