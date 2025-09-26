@@ -151,3 +151,33 @@ export interface ProcessingActivity {
   timestamp: string;
   error?: string;
 }
+
+export interface IQAResult {
+  file_name: string;
+  prediction: {
+    label: 'good' | 'bad';
+    confidence: number;
+  };
+}
+
+export interface IQAFolderResult {
+  folder_id: string;
+  results: IQAResult[];
+  error?: string;
+}
+
+export interface IQAResponse {
+  folders: IQAFolderResult[];
+}
+
+export interface IQARequest {
+  folder_id: string[];
+}
+
+export interface DriveFileWithQuality extends DriveFile {
+  qualityAssessment?: {
+    label: 'good' | 'bad';
+    confidence: number;
+    assessed: boolean;
+  };
+}
