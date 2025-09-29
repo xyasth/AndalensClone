@@ -1,11 +1,11 @@
-// api/photos/cluster/route.ts - Fixed driveFolder.album issue
+// api/photos/cluster/route.ts - Updated with include_files support
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://a7e8083c30fd.ngrok-free.app/extract';
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://ec94bcc55d6b.ngrok-free.app/extract';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request format' }, { status: 400 });
     }
 
-    // NEW: Validate that user owns all the albums being processed
+    // Validate that user owns all the albums being processed
     for (const albumData of body.albums) {
       const albumId = String(albumData.album_id);
       const album = await prisma.album.findFirst({
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         }, { status: 403 });
       }
 
-      // NEW: Validate that the folder_ids exist in this album
+      // Validate that the folder_ids exist in this album
       const requestedFolderIds = albumData.folder_id || [];
       const validFolderIds = album.driveFolders.map(df => df.driveFolderId);
       
@@ -53,6 +53,29 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             error: `Drive folder ${folderId} not found in album ${albumId}`
           }, { status: 400 });
+        }
+      }
+
+      // Validate include_files structure if provided
+      if (albumData.include_files) {
+        if (!Array.isArray(albumData.include_files)) {
+          return NextResponse.json({
+            error: 'include_files must be an array of arrays'
+          }, { status: 400 });
+        }
+
+        if (albumData.include_files.length !== requestedFolderIds.length) {
+          return NextResponse.json({
+            error: 'include_files array length must match folder_id array length'
+          }, { status: 400 });
+        }
+
+        for (const filesArray of albumData.include_files) {
+          if (!Array.isArray(filesArray)) {
+            return NextResponse.json({
+              error: 'Each element in include_files must be an array of file names'
+            }, { status: 400 });
+          }
         }
       }
     }
@@ -105,11 +128,16 @@ function generateMockResponse(request: any) {
   const clusterMap = new Map<number, boolean>();
 
   for (const album of request.albums) {
-    for (const folderId of album.folder_id) {
-      const numPhotos = Math.floor(Math.random() * 8) + 8;
+    const folderIds = album.folder_id || [];
+    const includeFiles = album.include_files || [];
+
+    folderIds.forEach((folderId: string, folderIndex: number) => {
+      // Get files to process for this folder
+      const filesToProcess = includeFiles[folderIndex] || [];
+      const numFiles = filesToProcess.length > 0 ? filesToProcess.length : Math.floor(Math.random() * 8) + 8;
       
-      for (let photoIndex = 0; photoIndex < numPhotos; photoIndex++) {
-        const fotoId = `photo_${photoIndex}.jpg`;
+      for (let photoIndex = 0; photoIndex < numFiles; photoIndex++) {
+        const fotoId = filesToProcess[photoIndex] || `photo_${photoIndex}.jpg`;
         const numFacesInPhoto = Math.floor(Math.random() * 4) + 1;
         
         for (let faceIndex = 0; faceIndex < numFacesInPhoto; faceIndex++) {
@@ -146,7 +174,7 @@ function generateMockResponse(request: any) {
           }
         }
       }
-    }
+    });
   }
 
   return { extracted, centroid };
@@ -200,10 +228,9 @@ async function saveProcessingResults(mlResponse: any, session: any) {
   try {
     console.log(`Processing ${extracted.length} faces`);
 
-    // NEW: Create drive file mappings for each album/folder combination
+    // Create drive file mappings for each album/folder combination
     const albumFolderMap = new Map<string, Map<string, string>>();
     
-    // Group by album and drive folder
     const albumDriveCombos = new Set<string>();
     for (const face of extracted) {
       const albumId = String(face.album_id);
@@ -211,14 +238,13 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       albumDriveCombos.add(`${albumId}:${driveId}`);
     }
 
-    // Create mappings for each album/drive combination
     for (const combo of albumDriveCombos) {
       const [albumId, driveId] = combo.split(':');
       const mapping = await getDriveFileMapping(albumId, driveId, session);
       albumFolderMap.set(combo, mapping);
     }
 
-    // Group faces by photo (now including drive folder)
+    // Group faces by photo
     const photoMap = new Map<string, any[]>();
     for (const face of extracted) {
       const albumId = String(face.album_id);
@@ -230,11 +256,10 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       photoMap.get(key)!.push(face);
     }
 
-    // Create centroid lookup (now per event, not per album)
+    // Create centroid lookup
     const centroidMap = new Map<string, any>();
     if (Array.isArray(centroid)) {
       for (const c of centroid) {
-        // NEW: Get eventId from album
         const album = await prisma.album.findUnique({
           where: { id: c.album_id },
           select: { eventId: true }
@@ -252,18 +277,16 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       const [albumId, driveId, fotoId] = key.split(':');
       const photoPath = `/drive/${albumId}/${driveId}/${fotoId}`;
 
-      // Get actual Drive file ID
       const fileMapping = albumFolderMap.get(`${albumId}:${driveId}`);
       const actualDriveFileId = fileMapping?.get(fotoId) || null;
 
-      // FIXED: Get the DriveFolder record with album included
       const driveFolder = await prisma.driveFolder.findFirst({
         where: {
           driveFolderId: driveId,
           albumId: albumId
         },
         include: {
-          album: true // Include the album relation
+          album: true
         }
       });
 
@@ -272,7 +295,6 @@ async function saveProcessingResults(mlResponse: any, session: any) {
         continue;
       }
 
-      // Create or update photo
       let photo = await prisma.photo.findFirst({ where: { path: photoPath } });
       
       if (photo) {
@@ -287,14 +309,13 @@ async function saveProcessingResults(mlResponse: any, session: any) {
           }
         });
       } else {
-        // FIXED: Now we can access driveFolder.album.eventId
         photo = await prisma.photo.create({
           data: {
             originalName: fotoId,
             path: photoPath,
-            eventId: driveFolder.album.eventId, // Now this works!
+            eventId: driveFolder.album.eventId,
             albumId: albumId,
-            driveFolderId: driveFolder.id, // Link to specific drive folder record
+            driveFolderId: driveFolder.id,
             isGoodQuality: faces.length > 0 && faces.some(f => f.face_confidence > 0.8),
             qualityScore: faces.length > 0 ? Math.max(...faces.map(f => Number(f.face_confidence) || 0)) : 0.5,
             status: 'COMPLETED',
@@ -304,15 +325,13 @@ async function saveProcessingResults(mlResponse: any, session: any) {
         });
       }
 
-      // Get eventId for person clustering (persons belong to events, not albums)
-      const eventId = driveFolder.album.eventId; // Use the included album
+      const eventId = driveFolder.album.eventId;
 
       // Process each face
       for (const face of faces) {
         const clusterIdStr = String(face.cluster_id ?? 0);
         const fotoIdStr = String(face.face_id ?? face.foto_id ?? `${fotoId}_face`);
 
-        // Process embedding
         let embeddingSafe: number[] = [];
         if (Array.isArray(face.embedding)) {
           embeddingSafe = face.embedding.map((v: any) => {
@@ -321,7 +340,6 @@ async function saveProcessingResults(mlResponse: any, session: any) {
           }).slice(0, 512);
         }
 
-        // Extract facial area
         const fa = face.facial_area ?? {};
         const facialAreaX = Math.max(0, Number(fa.x ?? 0));
         const facialAreaY = Math.max(0, Number(fa.y ?? 0));
@@ -329,23 +347,21 @@ async function saveProcessingResults(mlResponse: any, session: any) {
         const facialAreaH = Math.max(50, Number(fa.h ?? 100));
         const faceConfidence = Math.min(1.0, Math.max(0.0, Number(face.face_confidence ?? 0)));
 
-        // Check if this is centroid for thumbnail
         const centroidKey = `${eventId}:${clusterIdStr}`;
         const clusterCentroid = centroidMap.get(centroidKey);
         const shouldBeThumbnail = clusterCentroid && clusterCentroid.foto_id === fotoId;
 
-        // NEW: Create or update person using eventId (persons belong to events)
         let person = await prisma.person.upsert({
           where: {
             eventId_clusterId: {
-              eventId: eventId, // Use eventId instead of albumId
+              eventId: eventId,
               clusterId: clusterIdStr
             }
           },
           update: {},
           create: {
             name: `Person ${clusterIdStr}`,
-            eventId: eventId, // Use eventId
+            eventId: eventId,
             clusterId: clusterIdStr,
             photoCount: 0,
             averageConfidence: faceConfidence,
@@ -353,7 +369,6 @@ async function saveProcessingResults(mlResponse: any, session: any) {
           }
         });
 
-        // Update person statistics
         const currentFaceCount = await prisma.face.count({
           where: { personId: person.id }
         });
@@ -376,7 +391,6 @@ async function saveProcessingResults(mlResponse: any, session: any) {
           }
         });
 
-        // Create or update face
         await prisma.face.upsert({
           where: { fotoId: fotoIdStr },
           create: {
@@ -406,7 +420,7 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       }
     }
 
-    // NEW: Update statistics for albums, drive folders, and events
+    // Update statistics
     const processedAlbums = new Set<string>();
     const processedEvents = new Set<string>();
     
@@ -415,7 +429,6 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       const driveId = String(face.drive_id);
       processedAlbums.add(albumId);
       
-      // Update drive folder stats
       const driveFolder = await prisma.driveFolder.findFirst({
         where: {
           driveFolderId: driveId,
@@ -438,7 +451,6 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       }
     }
 
-    // Update album statistics
     for (const albumId of processedAlbums) {
       const photoCount = await prisma.photo.count({ where: { albumId } });
       
@@ -454,7 +466,6 @@ async function saveProcessingResults(mlResponse: any, session: any) {
       processedEvents.add(album.event.id);
     }
 
-    // Update event statistics
     for (const eventId of processedEvents) {
       const photoCount = await prisma.photo.count({ where: { eventId } });
       const personCount = await prisma.person.count({ where: { eventId } });
