@@ -1,4 +1,4 @@
-// api/photos/[photoId]/thumbnail/route.ts - FIXED: Use album->event relation
+// api/photos/[photoId]/thumbnail/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -51,7 +51,7 @@ export async function GET(
 
     // If photo is from Google Drive, get and crop it
     if (photo.driveFileId) {
-      const accessToken = session.accessToken;
+      const accessToken = (session as any).accessToken;
 
       if (!accessToken) {
         console.error('❌ No Google Drive access token for thumbnail');
@@ -76,16 +76,29 @@ export async function GET(
       const imageBuffer = await driveResponse.arrayBuffer();
 
       try {
-        // Import sharp dynamically to handle server-side image processing
-        const sharp = (await import('sharp')).default;
+        // Get image metadata to validate crop coordinates
+        const image = sharp(Buffer.from(imageBuffer));
+        const metadata = await image.metadata();
+        
+        if (!metadata.width || !metadata.height) {
+          throw new Error('Could not determine image dimensions');
+        }
+
+        // Validate and clamp crop coordinates
+        const safeX = Math.max(0, Math.min(x, metadata.width - 1));
+        const safeY = Math.max(0, Math.min(y, metadata.height - 1));
+        const safeW = Math.max(1, Math.min(w, metadata.width - safeX));
+        const safeH = Math.max(1, Math.min(h, metadata.height - safeY));
+
+        console.log(`📐 Image: ${metadata.width}x${metadata.height}, Crop: ${safeX},${safeY} ${safeW}x${safeH}`);
 
         // Crop and resize the image using Sharp
         const croppedBuffer = await sharp(Buffer.from(imageBuffer))
           .extract({
-            left: Math.max(0, x),
-            top: Math.max(0, y),
-            width: w,
-            height: h
+            left: safeX,
+            top: safeY,
+            width: safeW,
+            height: safeH
           })
           .resize(size, size, {
             fit: 'cover',

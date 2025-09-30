@@ -1,11 +1,11 @@
-// api/photos/cluster/route.ts - Updated with include_files support
+// api/photos/cluster/route.ts - Enhanced with incremental clustering support
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://ec94bcc55d6b.ngrok-free.app/extract';
+const ML_API_BASE_URL = process.env.ML_API_BASE_URL || 'https://e24135ca6db2.ngrok-free.app/extract';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +22,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request format' }, { status: 400 });
     }
 
-    // Validate that user owns all the albums being processed
+    // Determine the event ID from the first album
+    let eventId: string | null = null;
+    const albumIds = body.albums.map((a: any) => a.album_id);
+
+    // Validate all albums and get event ID
     for (const albumData of body.albums) {
       const albumId = String(albumData.album_id);
       const album = await prisma.album.findFirst({
@@ -44,7 +48,15 @@ export async function POST(request: NextRequest) {
         }, { status: 403 });
       }
 
-      // Validate that the folder_ids exist in this album
+      if (!eventId) {
+        eventId = album.event.id;
+      } else if (eventId !== album.event.id) {
+        return NextResponse.json({
+          error: 'All albums must belong to the same event'
+        }, { status: 400 });
+      }
+
+      // Validate folder IDs
       const requestedFolderIds = albumData.folder_id || [];
       const validFolderIds = album.driveFolders.map(df => df.driveFolderId);
       
@@ -56,7 +68,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Validate include_files structure if provided
+      // Validate include_files structure
       if (albumData.include_files) {
         if (!Array.isArray(albumData.include_files)) {
           return NextResponse.json({
@@ -69,15 +81,60 @@ export async function POST(request: NextRequest) {
             error: 'include_files array length must match folder_id array length'
           }, { status: 400 });
         }
-
-        for (const filesArray of albumData.include_files) {
-          if (!Array.isArray(filesArray)) {
-            return NextResponse.json({
-              error: 'Each element in include_files must be an array of file names'
-            }, { status: 400 });
-          }
-        }
       }
+    }
+
+    // Check for existing processed albums in this event
+    const existingAlbumsInEvent = await prisma.album.findMany({
+      where: {
+        eventId: eventId!,
+        status: 'COMPLETED',
+        photoCount: { gt: 0 }
+      },
+      select: { id: true, name: true }
+    });
+
+    const newAlbumIds = albumIds.filter((id: string) => 
+      !existingAlbumsInEvent.some(existing => existing.id === id)
+    );
+
+    // Check if we're adding new albums to an already processed event
+    const isIncrementalClustering = existingAlbumsInEvent.length > 0 && newAlbumIds.length > 0;
+    
+    if (isIncrementalClustering) {
+      console.warn(`⚠️ INCREMENTAL CLUSTERING DETECTED:`);
+      console.warn(`  - Event has ${existingAlbumsInEvent.length} already processed albums`);
+      console.warn(`  - Processing ${albumIds.length} albums total (${newAlbumIds.length} new)`);
+      console.warn(`  - This may create duplicate Person clusters!`);
+      
+      // Option 1: Warn and require all albums to be included
+      const missingAlbumIds = existingAlbumsInEvent
+        .map(a => a.id)
+        .filter(id => !albumIds.includes(id));
+      
+      if (missingAlbumIds.length > 0) {
+        const missingAlbums = existingAlbumsInEvent.filter(a => 
+          missingAlbumIds.includes(a.id)
+        );
+        
+        return NextResponse.json({
+          error: 'SYNC_REQUIRED',
+          message: 'To maintain synchronized clustering, you must include all previously processed albums',
+          processed_albums: existingAlbumsInEvent.map(a => ({
+            id: a.id,
+            name: a.name
+          })),
+          missing_albums: missingAlbums.map(a => ({
+            id: a.id,
+            name: a.name
+          })),
+          suggestion: 'Include all albums in the request to reprocess and synchronize face clusters'
+        }, { status: 409 }); // 409 Conflict
+      }
+
+      // If all albums are included, we need to delete old data before reprocessing
+      console.log('✅ All albums included - preparing for full reprocessing...');
+      await deleteEventClusteringData(eventId!);
     }
 
     let mlResponse: any;
@@ -120,6 +177,68 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Helper function to delete existing clustering data for an event
+async function deleteEventClusteringData(eventId: string) {
+  console.log(`🗑️ Deleting existing clustering data for event ${eventId}...`);
+  
+  try {
+    // Delete in correct order due to foreign key constraints
+    
+    // 1. Delete faces (references photos and persons)
+    const deletedFaces = await prisma.face.deleteMany({
+      where: {
+        photo: { eventId }
+      }
+    });
+    console.log(`  Deleted ${deletedFaces.count} faces`);
+
+    // 2. Delete persons (references event)
+    const deletedPersons = await prisma.person.deleteMany({
+      where: { eventId }
+    });
+    console.log(`  Deleted ${deletedPersons.count} persons`);
+
+    // 3. Delete photos (keep the records but reset processing status)
+    const updatedPhotos = await prisma.photo.updateMany({
+      where: { eventId },
+      data: {
+        status: 'PROCESSING',
+        processedAt: null,
+        isGoodQuality: false,
+        qualityScore: 0
+      }
+    });
+    console.log(`  Reset ${updatedPhotos.count} photos`);
+
+    // 4. Reset album statuses
+    const updatedAlbums = await prisma.album.updateMany({
+      where: { eventId },
+      data: {
+        status: 'ACTIVE',
+        photoCount: 0
+      }
+    });
+    console.log(`  Reset ${updatedAlbums.count} albums`);
+
+    // 5. Reset drive folder statuses
+    const updatedFolders = await prisma.driveFolder.updateMany({
+      where: {
+        album: { eventId }
+      },
+      data: {
+        status: 'ACTIVE',
+        photoCount: 0
+      }
+    });
+    console.log(`  Reset ${updatedFolders.count} drive folders`);
+
+    console.log('✅ Successfully cleaned up existing data for reprocessing');
+  } catch (error) {
+    console.error('❌ Failed to delete existing clustering data:', error);
+    throw error;
+  }
+}
+
 function generateMockResponse(request: any) {
   console.log('Generating mock response as fallback');
   
@@ -132,7 +251,6 @@ function generateMockResponse(request: any) {
     const includeFiles = album.include_files || [];
 
     folderIds.forEach((folderId: string, folderIndex: number) => {
-      // Get files to process for this folder
       const filesToProcess = includeFiles[folderIndex] || [];
       const numFiles = filesToProcess.length > 0 ? filesToProcess.length : Math.floor(Math.random() * 8) + 8;
       
@@ -228,7 +346,7 @@ async function saveProcessingResults(mlResponse: any, session: any) {
   try {
     console.log(`Processing ${extracted.length} faces`);
 
-    // Create drive file mappings for each album/folder combination
+    // Create drive file mappings
     const albumFolderMap = new Map<string, Map<string, string>>();
     
     const albumDriveCombos = new Set<string>();

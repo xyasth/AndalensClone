@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
-const IQA_API_URL = process.env.NEXT_PUBLIC_IQA_API_URL || 'https://28f775de84f1.ngrok-free.app/iqa';
+const IQA_API_URL = process.env.NEXT_PUBLIC_IQA_API_URL || 'https://dc837bd5fca2.ngrok-free.app/iqa';
 
 export async function POST(request: NextRequest) {
   try {
